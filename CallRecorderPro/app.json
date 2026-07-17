@@ -54,9 +54,10 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Allow CallRecorderPro to record audio for call transcription."
+          "microphonePermission": "Allow CallGenius to record audio for call transcription."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

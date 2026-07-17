@@ -1,3 +1,36 @@
+export type UseCase = 'customer_support' | 'meeting_minutes' | 'call_summaries';
+
+export type SubscriptionPlan = 'free' | 'starter' | 'pro' | 'enterprise';
+
+export type SubscriptionStatus = 'active' | 'pending' | 'expired' | 'cancelled';
+
+export interface UserSubscription {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  reference?: string;
+  amount?: number;
+  currency?: string;
+  expiresAt?: number;
+  createdAt: number;
+  lencoDepositId?: string;
+}
+
+export interface AdminApiKey {
+  id: string;
+  name: string;
+  service: 'openai' | 'lenco_public' | 'lenco_secret';
+  hint: string;
+  createdAt: number;
+}
+
+export interface AdminSettings {
+  isAdminSetup: boolean;
+  adminPinHash: string;
+  apiKeys: AdminApiKey[];
+  lencoPublicKeySet: boolean;
+  openaiKeySet: boolean;
+}
+
 export type CallDirection = 'incoming' | 'outgoing' | 'unknown';
 export type CallStatus = 'recording' | 'processing' | 'completed' | 'failed';
 export type SentimentType = 'positive' | 'neutral' | 'negative';
@@ -54,16 +87,22 @@ export interface AppSettings {
   language: string;
   storageLimit: number;
   notificationsEnabled: boolean;
+  useCase: UseCase;
+  onboardingComplete: boolean;
 }
 
 export type WhisperModel = 'whisper-1';
 export type GptModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo';
 
 export type RootStackParamList = {
+  Onboarding: undefined;
   Home: undefined;
   Recording: { callId?: string };
   CallDetail: { callId: string };
   Settings: undefined;
+  Subscription: undefined;
+  AdminLogin: undefined;
+  AdminDashboard: undefined;
 };
 
 export interface RecordingState {

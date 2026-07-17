@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, GptModel } from '../types';
-import { COLORS, SPACING, BORDER_RADIUS } from '../constants';
+import { RootStackParamList, GptModel, UseCase, UserSubscription } from '../types';
+import { COLORS, SPACING, BORDER_RADIUS, USE_CASE_CONFIG, SUBSCRIPTION_PLANS } from '../constants';
 import { useSettings } from '../hooks/useSettings';
 import { useCallRecords } from '../hooks/useCallRecords';
+import { subscriptionService } from '../services/subscriptionService';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Settings'>;
@@ -28,6 +29,26 @@ export function SettingsScreen({ navigation }: Props) {
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(settings.openaiApiKey);
   const [isSaving, setIsSaving] = useState(false);
+  const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+  const versionTapCount = useRef(0);
+  const versionTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    subscriptionService.getSubscription().then(setSubscription);
+  }, []);
+
+  const handleVersionTap = () => {
+    versionTapCount.current += 1;
+    if (versionTapTimer.current) clearTimeout(versionTapTimer.current);
+    versionTapTimer.current = setTimeout(() => {
+      versionTapCount.current = 0;
+    }, 2000);
+
+    if (versionTapCount.current >= 7) {
+      versionTapCount.current = 0;
+      navigation.navigate('AdminLogin');
+    }
+  };
 
   const handleSaveApiKey = useCallback(async () => {
     setIsSaving(true);
@@ -174,6 +195,68 @@ export function SettingsScreen({ navigation }: Props) {
           />
         </SettingsSection>
 
+        <SettingsSection title="Use Case" icon="options-outline">
+          <View style={styles.useCaseGrid}>
+            {(['customer_support', 'meeting_minutes', 'call_summaries'] as UseCase[]).map(uc => {
+              const config = USE_CASE_CONFIG[uc];
+              const isActive = settings.useCase === uc;
+              return (
+                <TouchableOpacity
+                  key={uc}
+                  style={[styles.useCaseTile, isActive && { borderColor: config.color, backgroundColor: config.color + '10' }]}
+                  onPress={() => updateSettings({ useCase: uc })}
+                >
+                  <Ionicons name={config.icon as any} size={22} color={isActive ? config.color : COLORS.textSecondary} />
+                  <Text style={[styles.useCaseTileText, isActive && { color: config.color }]}>
+                    {config.label}
+                  </Text>
+                  {isActive && <View style={[styles.useCaseCheck, { backgroundColor: config.color }]}>
+                    <Ionicons name="checkmark" size={10} color={COLORS.white} />
+                  </View>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.useCaseHint}>
+            {USE_CASE_CONFIG[settings.useCase].description}
+          </Text>
+        </SettingsSection>
+
+        <SettingsSection title="Subscription" icon="card-outline">
+          {subscription ? (
+            <View style={styles.subRow}>
+              <View>
+                <Text style={styles.subPlanName}>
+                  {SUBSCRIPTION_PLANS.find(p => p.id === subscription.plan)?.name ?? 'Free'} Plan
+                </Text>
+                <Text style={[styles.subStatus, {
+                  color: subscription.status === 'active' ? COLORS.accent : COLORS.warning,
+                }]}>
+                  {subscription.status.toUpperCase()}
+                  {subscription.status === 'active' && subscription.expiresAt
+                    ? ` · ${subscriptionService.getRemainingDays(subscription)} days left`
+                    : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.upgradeBtn}
+                onPress={() => navigation.navigate('Subscription')}
+              >
+                <Text style={styles.upgradeBtnText}>Manage</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.upgradeFullBtn}
+              onPress={() => navigation.navigate('Subscription')}
+            >
+              <Ionicons name="star-outline" size={16} color={COLORS.primary} />
+              <Text style={styles.upgradeFullBtnText}>View Plans & Upgrade</Text>
+              <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          )}
+        </SettingsSection>
+
         <SettingsSection title="Notifications" icon="notifications-outline">
           <SettingsSwitchRow
             label="Enable Notifications"
@@ -201,10 +284,10 @@ export function SettingsScreen({ navigation }: Props) {
         </SettingsSection>
 
         <SettingsSection title="About" icon="information-circle-outline">
-          <View style={styles.aboutRow}>
+          <TouchableOpacity style={styles.aboutRow} onPress={handleVersionTap} activeOpacity={1}>
             <Text style={styles.aboutLabel}>Version</Text>
             <Text style={styles.aboutValue}>1.0.0</Text>
-          </View>
+          </TouchableOpacity>
           <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>AI Models</Text>
             <Text style={styles.aboutValue}>Whisper + GPT-4</Text>
@@ -577,4 +660,67 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  useCaseGrid: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    padding: SPACING.sm,
+    flexWrap: 'wrap',
+  },
+  useCaseTile: {
+    flex: 1,
+    minWidth: '30%',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    position: 'relative',
+  },
+  useCaseTileText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  useCaseCheck: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  useCaseHint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+    lineHeight: 18,
+  },
+  subRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  subPlanName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  subStatus: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  upgradeBtn: {
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  upgradeBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.primary },
+  upgradeFullBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    padding: SPACING.md,
+  },
+  upgradeFullBtnText: { flex: 1, fontSize: 15, fontWeight: '500', color: COLORS.primary },
 });

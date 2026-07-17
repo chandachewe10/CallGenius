@@ -1,5 +1,5 @@
-import { CallSummary, GptModel, TranscriptionResult } from '../types';
-import { CUSTOMER_SUPPORT_SYSTEM_PROMPT } from '../constants';
+import { CallSummary, GptModel, TranscriptionResult, UseCase } from '../types';
+import { USE_CASE_PROMPTS } from '../constants';
 
 interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant';
@@ -19,7 +19,8 @@ class SummaryService {
     transcription: TranscriptionResult,
     apiKey: string,
     model: GptModel = 'gpt-4o-mini',
-    additionalContext?: string
+    additionalContext?: string,
+    useCase: UseCase = 'customer_support'
   ): Promise<CallSummary> {
     if (!apiKey) {
       throw new Error('OpenAI API key is required');
@@ -39,8 +40,9 @@ ${additionalContext ? `Additional context: ${additionalContext}` : ''}
 
 Return the analysis as valid JSON only, with no additional text before or after.`;
 
+    const systemPrompt = USE_CASE_PROMPTS[useCase];
     const messages: OpenAIMessage[] = [
-      { role: 'system', content: CUSTOMER_SUPPORT_SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
       { role: 'user', content: userMessage },
     ];
 

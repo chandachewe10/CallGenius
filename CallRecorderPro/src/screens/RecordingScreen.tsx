@@ -177,7 +177,9 @@ export function RecordingScreen({ navigation, route }: Props) {
       const summary = await summaryService.generateSummary(
         transcription,
         settings.openaiApiKey,
-        settings.gptModel
+        settings.gptModel,
+        undefined,
+        settings.useCase
       );
 
       updatedCall = {

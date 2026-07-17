@@ -1,0 +1,39 @@
+{
+  "name": "callrecorderpro",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "^3.1.1",
+    "@react-navigation/native": "^7.3.10",
+    "@react-navigation/native-stack": "^7.18.2",
+    "expo": "~57.0.7",
+    "expo-av": "^16.0.8",
+    "expo-background-fetch": "^57.0.5",
+    "expo-file-system": "^57.0.1",
+    "expo-haptics": "^57.0.1",
+    "expo-keep-awake": "^57.0.1",
+    "expo-secure-store": "^57.0.1",
+    "expo-sharing": "^57.0.6",
+    "expo-status-bar": "~57.0.1",
+    "expo-task-manager": "^57.0.5",
+    "openai": "^6.48.0",
+    "react": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-call-detection": "^1.9.0",
+    "react-native-gesture-handler": "^3.1.0",
+    "react-native-safe-area-context": "^5.8.0",
+    "react-native-screens": "^4.26.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

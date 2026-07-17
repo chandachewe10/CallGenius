@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { WebView } from 'react-native-webview';
+import { SafeWebView } from '../components/SafeWebView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { RootStackParamList, SubscriptionPlan, UserSubscription } from '../types';
@@ -300,12 +300,14 @@ export function SubscriptionScreen({ navigation }: Props) {
           {selectedPlan && (() => {
             const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
             return plan ? (
-              <WebView
+              <SafeWebView
                 source={{ html: getPaymentHtml(plan) }}
                 onMessage={handleWebViewMessage}
                 javaScriptEnabled
                 domStorageEnabled
                 style={styles.webview}
+                fallbackTitle="Payment — Lenco Pay"
+                fallbackMessage="The Lenco payment widget requires a native build. Build with EAS to process payments on-device."
               />
             ) : null;
           })()}

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo/ngrok": "^4.1.0",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "^3.1.1",
     "@react-navigation/native": "^7.3.10",
@@ -11,6 +12,7 @@
     "expo-av": "^16.0.8",
     "expo-background-fetch": "^57.0.5",
     "expo-file-system": "^57.0.1",
+    "expo-font": "~57.0.1",
     "expo-haptics": "^57.0.1",
     "expo-keep-awake": "^57.0.1",
     "expo-linking": "^57.0.3",

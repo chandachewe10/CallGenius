@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "CallRecorderPro",
+    "slug": "call-recorder-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.callrecorderpro.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "CallRecorderPro needs microphone access to record phone calls for transcription and analysis.",
+        "NSPhotoLibraryUsageDescription": "CallRecorderPro needs photo library access to export recordings.",
+        "NSPhoneCallUsageDescription": "CallRecorderPro monitors phone calls to assist with recording.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ]
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#2563EB",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.callrecorderpro.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_PHONE_STATE",
+        "android.permission.PROCESS_OUTGOING_CALLS",
+        "android.permission.READ_CALL_LOG",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow CallGenius to record audio for call transcription."
+        }
+      ],
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
+    }
+  }
+}

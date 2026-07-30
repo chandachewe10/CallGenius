@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { RootStackParamList, AdminApiKey, AdminSettings } from '../types';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants';
 import { adminService } from '../services/adminService';
+import { hasOpenAiApiKey, hasLencoSecretKey } from '../config/env';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'AdminDashboard'>;
@@ -33,25 +34,11 @@ interface ApiKeyEntry {
 
 const API_KEY_ENTRIES: ApiKeyEntry[] = [
   {
-    service: 'openai',
-    label: 'OpenAI API Key',
-    description: 'Used for Whisper transcription and GPT-4 summaries. All users share this key.',
-    icon: 'sparkles-outline',
-    placeholder: 'sk-...',
-  },
-  {
-    service: 'lenco_public',
-    label: 'Lenco Public Key',
-    description: 'Used to initialise the Lenco Pay widget on the subscription screen.',
-    icon: 'card-outline',
-    placeholder: 'pk_live_...',
-  },
-  {
     service: 'lenco_secret',
     label: 'Lenco Secret Key',
-    description: 'Used to verify webhook payment events server-side.',
+    description: 'Fallback if EXPO_PUBLIC_LENCO_SECRET_KEY is not set in .env. Used for mobile money collections API.',
     icon: 'key-outline',
-    placeholder: 'sk_live_...',
+    placeholder: 'your-lenco-secret-key',
   },
 ];
 
@@ -181,7 +168,59 @@ export function AdminDashboardScreen({ navigation }: Props) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
         }
       >
-        <Section title="API Keys" icon="key-outline" subtitle="Keys are write-only — once saved they cannot be viewed, only removed and replaced.">
+        <Section title="API Keys" icon="key-outline" subtitle="OpenAI and Lenco secret keys can be configured in .env. Admin keys are write-only fallbacks.">
+          <View style={styles.apiKeyCard}>
+            <View style={styles.apiKeyHeader}>
+              <View style={styles.apiKeyIconBg}>
+                <Ionicons name="sparkles-outline" size={18} color={COLORS.primary} />
+              </View>
+              <View style={styles.apiKeyInfo}>
+                <Text style={styles.apiKeyLabel}>OpenAI API Key</Text>
+                <Text style={styles.apiKeyDesc}>
+                  Set EXPO_PUBLIC_OPENAI_API_KEY in the project .env file before building or starting Expo.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.keyStatusRow}>
+              <View style={styles.keySet}>
+                <Ionicons
+                  name={hasOpenAiApiKey() ? 'checkmark-circle' : 'alert-circle-outline'}
+                  size={16}
+                  color={hasOpenAiApiKey() ? COLORS.accent : COLORS.warning}
+                />
+                <Text style={styles.keyHint}>
+                  {hasOpenAiApiKey() ? 'Configured in .env' : 'Missing from .env'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.apiKeyCard}>
+            <View style={styles.apiKeyHeader}>
+              <View style={styles.apiKeyIconBg}>
+                <Ionicons name="card-outline" size={18} color={COLORS.primary} />
+              </View>
+              <View style={styles.apiKeyInfo}>
+                <Text style={styles.apiKeyLabel}>Lenco Secret Key</Text>
+                <Text style={styles.apiKeyDesc}>
+                  Used for mobile money collections. Set EXPO_PUBLIC_LENCO_SECRET_KEY in .env, or add it below as a fallback.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.keyStatusRow}>
+              <View style={styles.keySet}>
+                <Ionicons
+                  name={hasLencoSecretKey() ? 'checkmark-circle' : 'alert-circle-outline'}
+                  size={16}
+                  color={hasLencoSecretKey() ? COLORS.accent : COLORS.warning}
+                />
+                <Text style={styles.keyHint}>
+                  {hasLencoSecretKey() ? 'Configured in .env' : 'Using admin key or missing'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           {API_KEY_ENTRIES.map(entry => {
             const hint = getKeyHint(entry.service);
             const hasKey = !!hint;

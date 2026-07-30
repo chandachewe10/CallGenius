@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { AdminApiKey, AdminSettings, UserSubscription } from '../types';
 import { STORAGE_KEYS } from '../constants';
+import { getOpenAiApiKey, getLencoSecretKey } from '../config/env';
 
 function simpleHash(pin: string): string {
   let hash = 0;
@@ -20,8 +21,12 @@ class AdminService {
   private sessionTimeout: ReturnType<typeof setTimeout> | null = null;
 
   async isAdminConfigured(): Promise<boolean> {
-    const pin = await SecureStore.getItemAsync(STORAGE_KEYS.ADMIN_PIN);
-    return !!pin;
+    try {
+      const pin = await SecureStore.getItemAsync(STORAGE_KEYS.ADMIN_PIN);
+      return !!pin;
+    } catch {
+      return false;
+    }
   }
 
   async setupAdmin(pin: string): Promise<void> {
@@ -77,8 +82,8 @@ class AdminService {
       settings.apiKeys.push(entry);
     }
 
-    if (service === 'openai') settings.openaiKeySet = true;
     if (service === 'lenco_public') settings.lencoPublicKeySet = true;
+    if (service === 'lenco_secret') settings.lencoPublicKeySet = true;
 
     await this.saveAdminSettings(settings);
   }
@@ -90,8 +95,8 @@ class AdminService {
     const settings = await this.getAdminSettings();
     settings.apiKeys = settings.apiKeys.filter(k => k.service !== service);
 
-    if (service === 'openai') settings.openaiKeySet = false;
     if (service === 'lenco_public') settings.lencoPublicKeySet = false;
+    if (service === 'lenco_secret') settings.lencoPublicKeySet = false;
 
     await this.saveAdminSettings(settings);
   }
@@ -102,13 +107,13 @@ class AdminService {
   }
 
   async getOpenAIKey(): Promise<string> {
-    const adminKey = await this.getApiKey('openai');
-    if (adminKey) return adminKey;
-    return (await SecureStore.getItemAsync(STORAGE_KEYS.API_KEY)) ?? '';
+    return getOpenAiApiKey();
   }
 
-  async getLencoPublicKey(): Promise<string> {
-    return (await this.getApiKey('lenco_public')) ?? '';
+  async getLencoSecretKey(): Promise<string> {
+    const envKey = getLencoSecretKey();
+    if (envKey) return envKey;
+    return (await this.getApiKey('lenco_secret')) ?? '';
   }
 
   async getAdminSettings(): Promise<AdminSettings> {
@@ -155,17 +160,19 @@ class AdminService {
 
   private getStorageKey(service: AdminApiKey['service']): string {
     switch (service) {
-      case 'openai': return STORAGE_KEYS.ADMIN_OPENAI_KEY;
       case 'lenco_public': return STORAGE_KEYS.LENCO_PUBLIC_KEY;
       case 'lenco_secret': return STORAGE_KEYS.LENCO_SECRET_KEY;
+      default:
+        throw new Error(`Unsupported admin key service: ${service}`);
     }
   }
 
   private getServiceName(service: AdminApiKey['service']): string {
     switch (service) {
-      case 'openai': return 'OpenAI API Key';
       case 'lenco_public': return 'Lenco Public Key';
       case 'lenco_secret': return 'Lenco Secret Key';
+      default:
+        return service;
     }
   }
 }

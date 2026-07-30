@@ -15,18 +15,31 @@ import { AdminLoginScreen } from './src/screens/AdminLoginScreen';
 import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 import { RootStackParamList } from './src/types';
 import { storageService } from './src/services/storageService';
+import { useSettings } from './src/hooks/useSettings';
+import { useAutoCallRecording } from './src/hooks/useAutoCallRecording';
 import { COLORS } from './src/constants';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function AutoCallRecordingManager() {
+  const { settings, isLoading } = useSettings();
+  useAutoCallRecording(!isLoading && settings.autoRecord);
+  return null;
+}
 
 export default function App() {
   const [initialRoute, setInitialRoute] =
     useState<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
-    storageService.getSettings().then(settings => {
-      setInitialRoute(settings.onboardingComplete ? 'Home' : 'Onboarding');
-    });
+    storageService
+      .getSettings()
+      .then(settings => {
+        setInitialRoute(settings.onboardingComplete ? 'Home' : 'Onboarding');
+      })
+      .catch(() => {
+        setInitialRoute('Onboarding');
+      });
   }, []);
 
   if (!initialRoute) {
@@ -40,6 +53,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
+      <AutoCallRecordingManager />
       <NavigationContainer>
         <Stack.Navigator
           initialRouteName={initialRoute}

@@ -1,10 +1,15 @@
 {
   "expo": {
-    "name": "CallRecorderPro",
-    "slug": "call-recorder-pro",
+    "name": "CallGenius",
+    "slug": "call-genius",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F0F7FF"
+    },
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
@@ -24,7 +29,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#2563EB",
+        "backgroundColor": "#F0F7FF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

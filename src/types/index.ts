@@ -79,7 +79,6 @@ export interface CallSummary {
 }
 
 export interface AppSettings {
-  openaiApiKey: string;
   whisperModel: WhisperModel;
   gptModel: GptModel;
   autoRecord: boolean;

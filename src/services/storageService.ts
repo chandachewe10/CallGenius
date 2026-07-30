@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
 import { File, Directory, Paths } from 'expo-file-system';
 import { CallRecord, AppSettings } from '../types';
 import { STORAGE_KEYS, DEFAULT_SETTINGS } from '../constants';
@@ -56,26 +55,17 @@ class StorageService {
   }
 
   async saveSettings(settings: AppSettings): Promise<void> {
-    const { openaiApiKey, ...rest } = settings;
-    await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(rest));
-    if (openaiApiKey) {
-      await SecureStore.setItemAsync(STORAGE_KEYS.API_KEY, openaiApiKey);
-    }
+    await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   }
 
   async getSettings(): Promise<AppSettings> {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const apiKey = await SecureStore.getItemAsync(STORAGE_KEYS.API_KEY);
     const base = data ? JSON.parse(data) : {};
-    return { ...DEFAULT_SETTINGS, ...base, openaiApiKey: apiKey ?? '' };
-  }
-
-  async getApiKey(): Promise<string> {
-    return (await SecureStore.getItemAsync(STORAGE_KEYS.API_KEY)) ?? '';
-  }
-
-  async saveApiKey(key: string): Promise<void> {
-    await SecureStore.setItemAsync(STORAGE_KEYS.API_KEY, key);
+    return {
+      ...DEFAULT_SETTINGS,
+      ...base,
+      autoRecord: base.autoRecord ?? DEFAULT_SETTINGS.autoRecord,
+    };
   }
 
   async getStorageUsage(): Promise<number> {

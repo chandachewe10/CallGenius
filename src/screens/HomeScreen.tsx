@@ -12,9 +12,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { RootStackParamList, CallRecord } from '../types';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants';
 import { useCallRecords } from '../hooks/useCallRecords';
+import { useSettings } from '../hooks/useSettings';
 import { CallCard } from '../components/CallCard';
 import { EmptyState } from '../components/EmptyState';
 import { formatDate } from '../utils';
@@ -25,8 +27,15 @@ type Props = {
 
 export function HomeScreen({ navigation }: Props) {
   const { calls, isLoading, refreshCalls, deleteCall } = useCallRecords();
+  const { settings } = useSettings();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshCalls();
+    }, [refreshCalls])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -112,8 +121,12 @@ export function HomeScreen({ navigation }: Props) {
         <EmptyState
           icon="mic-outline"
           title="No Recordings Yet"
-          description="Start recording your customer support calls to get AI-powered transcriptions and summaries."
-          actionLabel="Start Recording"
+          description={
+            settings.autoRecord
+              ? 'Phone calls will be recorded automatically when they connect. Tap the mic button to manually record meetings or notes.'
+              : 'Start recording your customer support calls to get AI-powered transcriptions and summaries.'
+          }
+          actionLabel="Manual Recording"
           onAction={() => navigation.navigate('Recording', {})}
         />
       ) : (

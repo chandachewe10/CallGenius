@@ -21,9 +21,9 @@ import { useCallRecords } from '../hooks/useCallRecords';
 import { useSettings } from '../hooks/useSettings';
 import { SentimentBadge } from '../components/SentimentBadge';
 import { LoadingOverlay } from '../components/LoadingOverlay';
-import { transcriptionService } from '../services/transcriptionService';
-import { summaryService } from '../services/summaryService';
 import { storageService } from '../services/storageService';
+import { processCallRecording } from '../services/recordingProcessorService';
+import { hasOpenAiApiKey } from '../config/env';
 import { formatDuration, formatTimestamp, formatTime } from '../utils';
 
 type Props = {
@@ -54,8 +54,11 @@ export function CallDetailScreen({ navigation, route }: Props) {
       Alert.alert('No Audio', 'No audio file found for this recording.');
       return;
     }
-    if (!settings.openaiApiKey) {
-      Alert.alert('API Key Required', 'Please add your OpenAI API key in Settings.');
+    if (!hasOpenAiApiKey()) {
+      Alert.alert(
+        'OpenAI Key Missing',
+        'Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file to enable transcription.'
+      );
       return;
     }
 
@@ -66,32 +69,9 @@ export function CallDetailScreen({ navigation, route }: Props) {
         onPress: async () => {
           setIsProcessing(true);
           try {
-            setProcessingMessage('Transcribing Audio');
-            setProcessingSubMessage('Using OpenAI Whisper...');
-            const transcription = await transcriptionService.transcribeAudio(
-              call.audioUri!,
-              settings.openaiApiKey,
-              settings.whisperModel,
-              settings.language
-            );
-
-            setProcessingMessage('Generating Summary');
-            setProcessingSubMessage('Analyzing with GPT...');
-            const summary = await summaryService.generateSummary(
-              transcription,
-              settings.openaiApiKey,
-              settings.gptModel,
-              undefined,
-              settings.useCase
-            );
-
-            const updated: CallRecord = {
-              ...call,
-              transcription,
-              summary,
-              status: 'completed',
-            };
-            await storageService.saveCall(updated);
+            setProcessingMessage('Processing Recording');
+            setProcessingSubMessage('Transcribing and summarizing...');
+            const updated = await processCallRecording(call, call.audioUri!, settings);
             await updateCall(updated);
             setCall(updated);
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

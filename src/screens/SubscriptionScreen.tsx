@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeWebView } from '../components/SafeWebView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
-import { RootStackParamList, SubscriptionPlan, UserSubscription } from '../types';
+import { RootStackParamList, UserSubscription } from '../types';
 import {
   COLORS,
   SPACING,
@@ -23,6 +24,15 @@ import {
 } from '../constants';
 import { subscriptionService } from '../services/subscriptionService';
 import { adminService } from '../services/adminService';
+import {
+  collectMobileMoney,
+  createPaymentSession,
+  getCollectionTransactionId,
+  LENCO_OPERATORS,
+  LencoMobileOperator,
+  suggestOperatorFromPhone,
+} from '../services/paymentService';
+import { hasLencoSecretKey } from '../config/env';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Subscription'>;
@@ -30,23 +40,27 @@ type Props = {
 
 export function SubscriptionScreen({ navigation }: Props) {
   const [currentSub, setCurrentSub] = useState<UserSubscription | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
-  const [lencoKey, setLencoKey] = useState('');
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentRef, setPaymentRef] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlanConfig | null>(null);
+  const [lencoSecretKey, setLencoSecretKey] = useState('');
+  const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [operator, setOperator] = useState<LencoMobileOperator>('airtel');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     loadData();
   }, []);
 
   const loadData = async () => {
-    const [sub, key] = await Promise.all([
+    const [sub, secretKey] = await Promise.all([
       subscriptionService.getSubscription(),
-      adminService.getLencoPublicKey(),
+      adminService.getLencoSecretKey(),
     ]);
     setCurrentSub(sub);
-    setLencoKey(key);
+    setLencoSecretKey(secretKey);
   };
+
+  const isPaymentConfigured = () => hasLencoSecretKey() || !!lencoSecretKey;
 
   const handleSelectPlan = async (plan: SubscriptionPlanConfig) => {
     if (plan.id === 'free') {
@@ -54,165 +68,86 @@ export function SubscriptionScreen({ navigation }: Props) {
       return;
     }
 
-    if (!lencoKey) {
+    if (!isPaymentConfigured()) {
       Alert.alert(
         'Payment Not Available',
-        'The payment gateway is not configured yet. Please contact the administrator.',
+        'Add EXPO_PUBLIC_LENCO_SECRET_KEY to your .env file to enable mobile money payments.',
       );
       return;
     }
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSelectedPlan(plan.id);
-    const ref = `crp-${plan.id}-${Date.now()}`;
-    setPaymentRef(ref);
-    setShowPayment(true);
+    setSelectedPlan(plan);
+    setShowPaymentForm(true);
   };
 
-  const getPaymentHtml = (plan: SubscriptionPlanConfig): string => {
-    return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <script src="https://pay.lenco.co/js/v1/inline.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #F8FAFC;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 24px;
-    }
-    .card {
-      background: white;
-      border-radius: 20px;
-      padding: 32px 24px;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-      text-align: center;
-    }
-    .icon { font-size: 48px; margin-bottom: 16px; }
-    h2 { color: #0F172A; font-size: 22px; margin-bottom: 8px; }
-    .price { color: #2563EB; font-size: 36px; font-weight: 800; margin: 12px 0 4px; }
-    .period { color: #64748B; font-size: 14px; margin-bottom: 20px; }
-    .btn {
-      background: #2563EB;
-      color: white;
-      border: none;
-      border-radius: 12px;
-      padding: 14px 32px;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      width: 100%;
-      margin-top: 8px;
-    }
-    .btn:active { opacity: 0.85; }
-    .info { color: #94A3B8; font-size: 12px; margin-top: 16px; line-height: 1.5; }
-    #status { margin-top: 16px; padding: 12px; border-radius: 8px; display: none; font-size: 14px; }
-    .success { background: #D1FAE5; color: #059669; }
-    .error { background: #FEE2E2; color: #DC2626; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">💳</div>
-    <h2>CallGenius ${plan.name}</h2>
-    <div class="price">K${plan.price}</div>
-    <div class="period">per ${plan.period}</div>
-    <button class="btn" onclick="pay()">Pay with Lenco</button>
-    <p class="info">Secure payment via Lenco. Supports Mobile Money & Card.</p>
-    <div id="status"></div>
-  </div>
-
-  <script>
-    function showStatus(msg, type) {
-      const el = document.getElementById('status');
-      el.textContent = msg;
-      el.className = type;
-      el.style.display = 'block';
-    }
-
-    function pay() {
-      LencoPay.getPaid({
-        key: "${lencoKey}",
-        reference: "${paymentRef}",
-        amount: ${plan.price * 100},
-        currency: "ZMW",
-        channels: ["card", "mobile-money"],
-        customer: {
-          firstName: "CallGenius",
-          lastName: "User",
-        },
-        onSuccess: function(response) {
-          showStatus('Payment successful! Activating your subscription...', 'success');
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'payment_success',
-            data: response
-          }));
-        },
-        onClose: function() {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'payment_closed' }));
-        },
-        onConfirmationPending: function() {
-          showStatus('Payment pending confirmation. Your subscription will be activated soon.', 'success');
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'payment_pending' }));
-        },
-      });
-    }
-
-    window.addEventListener('DOMContentLoaded', function() {
-      setTimeout(pay, 500);
-    });
-  </script>
-</body>
-</html>`;
+  const handlePhoneChange = (value: string) => {
+    setPhone(value);
+    const suggested = suggestOperatorFromPhone(value);
+    if (suggested) setOperator(suggested);
   };
 
-  const handleWebViewMessage = async (event: { nativeEvent: { data: string } }) => {
+  const startPayment = async () => {
+    if (!selectedPlan) return;
+
+    const normalizedPhone = phone.trim();
+    if (!normalizedPhone || normalizedPhone.length < 9) {
+      Alert.alert('Phone Required', 'Enter your mobile money phone number (e.g. 0973750029).');
+      return;
+    }
+
+    const secretKey = lencoSecretKey;
+    if (!secretKey) {
+      Alert.alert('Payment Not Available', 'Lenco secret key is not configured.');
+      return;
+    }
+
+    setIsProcessing(true);
+
     try {
-      const msg = JSON.parse(event.nativeEvent.data);
+      const session = createPaymentSession(selectedPlan, normalizedPhone, operator);
 
-      if (msg.type === 'payment_success') {
-        setShowPayment(false);
-        const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
-        if (!plan) return;
+      await subscriptionService.createPendingSubscription(
+        selectedPlan.id,
+        session.reference,
+        session.amount,
+      );
 
-        await subscriptionService.activateSubscription(paymentRef, msg.data?.id);
-        await loadData();
+      const response = await collectMobileMoney(
+        {
+          operator: session.operator,
+          phone: session.phone,
+          amount: session.amount,
+          reference: session.reference,
+          bearer: 'customer',
+        },
+        secretKey,
+      );
 
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          'Subscription Activated! 🎉',
-          `Welcome to CallGenius ${plan.name}! Enjoy unlimited recordings and AI analysis.`,
-          [{ text: 'Start Recording', onPress: () => navigation.goBack() }]
-        );
-      } else if (msg.type === 'payment_pending') {
-        setShowPayment(false);
-        if (selectedPlan) {
-          const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
-          await subscriptionService.createPendingSubscription(
-            selectedPlan,
-            paymentRef,
-            plan?.price ?? 0
-          );
-          await loadData();
-        }
-        Alert.alert(
-          'Payment Pending',
-          'Your subscription will be activated once the payment is confirmed.',
-          [{ text: 'OK' }]
-        );
-      } else if (msg.type === 'payment_closed') {
-        setShowPayment(false);
+      const transactionId = getCollectionTransactionId(response);
+      const sub = await subscriptionService.getSubscription();
+      if (sub?.reference === session.reference) {
+        if (transactionId) sub.lencoDepositId = transactionId;
+        sub.status = 'pending';
+        await subscriptionService.saveSubscription(sub);
       }
-    } catch {}
+
+      setShowPaymentForm(false);
+      await loadData();
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Alert.alert(
+        'Approve Payment',
+        'A prompt has been sent to your phone. Please approve the payment to complete your subscription.',
+        [{ text: 'OK' }],
+      );
+    } catch (error) {
+      Alert.alert(
+        'Payment Failed',
+        error instanceof Error ? error.message : 'Unable to process payment. Please try again.',
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const currentPlanConfig = SUBSCRIPTION_PLANS.find(p => p.id === (currentSub?.plan ?? 'free'));
@@ -263,6 +198,8 @@ export function SubscriptionScreen({ navigation }: Props) {
           </View>
         )}
 
+       
+
         <Text style={styles.sectionTitle}>Choose a Plan</Text>
 
         {SUBSCRIPTION_PLANS.map(plan => {
@@ -276,42 +213,68 @@ export function SubscriptionScreen({ navigation }: Props) {
             />
           );
         })}
-
-        <View style={styles.disclaimer}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={COLORS.textTertiary} />
-          <Text style={styles.disclaimerText}>
-            Payments processed securely by Lenco. Cancel anytime. Subscriptions auto-renew monthly.
-          </Text>
-        </View>
       </ScrollView>
 
-      <Modal visible={showPayment} animationType="slide" onRequestClose={() => setShowPayment(false)}>
-        <SafeAreaView style={styles.webviewContainer}>
-          <View style={styles.webviewHeader}>
-            <TouchableOpacity onPress={() => setShowPayment(false)} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color={COLORS.text} />
-            </TouchableOpacity>
-            <Text style={styles.webviewTitle}>Secure Payment</Text>
-            <View style={styles.secureBadge}>
-              <Ionicons name="lock-closed" size={12} color={COLORS.accent} />
-              <Text style={styles.secureBadgeText}>Secure</Text>
+      <Modal
+        visible={showPaymentForm}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowPaymentForm(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Mobile Money Payment</Text>
+            <Text style={styles.modalSubtitle}>
+              Pay K{selectedPlan?.price ?? 0} for {selectedPlan?.name}. Choose your network and enter the paying number.
+            </Text>
+
+            <Text style={styles.fieldLabel}>Network</Text>
+            <View style={styles.operatorRow}>
+              {LENCO_OPERATORS.map(op => {
+                const active = operator === op.id;
+                return (
+                  <TouchableOpacity
+                    key={op.id}
+                    style={[styles.operatorChip, active && styles.operatorChipActive]}
+                    onPress={() => setOperator(op.id)}
+                  >
+                    <Text style={[styles.operatorChipText, active && styles.operatorChipTextActive]}>
+                      {op.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
+
+            <Text style={styles.fieldLabel}>Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="0973750029"
+              placeholderTextColor={COLORS.textTertiary}
+              value={phone}
+              onChangeText={handlePhoneChange}
+              keyboardType="phone-pad"
+            />
+
+            <TouchableOpacity
+              style={[styles.primaryButton, isProcessing && styles.primaryButtonDisabled]}
+              onPress={startPayment}
+              disabled={isProcessing}
+            >
+              {isProcessing ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  Pay K{selectedPlan?.price ?? 0} with {operator === 'airtel' ? 'Airtel' : 'MTN'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowPaymentForm(false)}>
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-          {selectedPlan && (() => {
-            const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
-            return plan ? (
-              <SafeWebView
-                source={{ html: getPaymentHtml(plan) }}
-                onMessage={handleWebViewMessage}
-                javaScriptEnabled
-                domStorageEnabled
-                style={styles.webview}
-                fallbackTitle="Payment — Lenco Pay"
-                fallbackMessage="The Lenco payment widget requires a native build. Build with EAS to process payments on-device."
-              />
-            ) : null;
-          })()}
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -362,9 +325,7 @@ function PlanCard({
         </View>
         <View style={[styles.planBadge, plan.highlighted && { backgroundColor: COLORS.white + '30' }]}>
           <Text style={[styles.planBadgeText, plan.highlighted && { color: COLORS.white }]}>
-            {typeof plan.recordings === 'number'
-              ? `${plan.recordings} rec`
-              : 'Unlimited'}
+            {typeof plan.recordings === 'number' ? `${plan.recordings} rec` : 'Unlimited'}
           </Text>
         </View>
       </View>
@@ -384,17 +345,21 @@ function PlanCard({
         ))}
       </View>
 
-      <View style={[
-        styles.selectButton,
-        plan.highlighted && { backgroundColor: COLORS.white },
-        isCurrent && styles.currentButton,
-      ]}>
-        <Text style={[
-          styles.selectButtonText,
-          plan.highlighted && { color: COLORS.primary },
-          isCurrent && { color: COLORS.accent },
-        ]}>
-          {isCurrent ? '✓ Current Plan' : plan.price === 0 ? 'Free Plan' : `Subscribe — K${plan.price}/mo`}
+      <View
+        style={[
+          styles.selectButton,
+          plan.highlighted && { backgroundColor: COLORS.white },
+          isCurrent && styles.currentButton,
+        ]}
+      >
+        <Text
+          style={[
+            styles.selectButtonText,
+            plan.highlighted && { color: COLORS.primary },
+            isCurrent && { color: COLORS.accent },
+          ]}
+        >
+          {isCurrent ? 'Current Plan' : plan.price === 0 ? 'Free Plan' : `Subscribe — K${plan.price}/mo`}
         </Text>
       </View>
     </TouchableOpacity>
@@ -411,43 +376,83 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   backButton: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
   content: { paddingHorizontal: SPACING.md, paddingBottom: SPACING.xxl, gap: SPACING.sm },
   currentPlanCard: {
-    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.lg, padding: SPACING.md,
-    borderLeftWidth: 4, borderLeftColor: COLORS.accent,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.accent,
   },
   currentPlanHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginBottom: 6 },
-  currentPlanLabel: { fontSize: 12, fontWeight: '600', color: COLORS.accent, textTransform: 'uppercase', letterSpacing: 0.5 },
+  currentPlanLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.accent,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   currentPlanName: { fontSize: 22, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
   subStatusRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: BORDER_RADIUS.full },
   statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   expiresText: { fontSize: 13, color: COLORS.textSecondary },
+  gatewayCard: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    alignItems: 'flex-start',
+  },
+  gatewayTextWrap: { flex: 1 },
+  gatewayTitle: { fontSize: 15, fontWeight: '700', color: COLORS.primary, marginBottom: 4 },
+  gatewayDesc: { fontSize: 12, color: COLORS.primary, lineHeight: 18 },
+  gatewayStatus: { fontSize: 11, color: COLORS.textSecondary, marginTop: 6, fontWeight: '600' },
   sectionTitle: {
-    fontSize: 13, fontWeight: '700', color: COLORS.textSecondary,
-    textTransform: 'uppercase', letterSpacing: 0.8, marginTop: SPACING.sm,
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: SPACING.sm,
   },
   planCard: {
-    backgroundColor: COLORS.surface, borderRadius: BORDER_RADIUS.xl, padding: SPACING.md,
-    borderWidth: 1.5, borderColor: COLORS.border, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
   },
-  planCardHighlighted: {
-    backgroundColor: COLORS.primary, borderColor: COLORS.primary,
-    shadowColor: COLORS.primary, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8,
-  },
+  planCardHighlighted: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   popularBadge: {
-    position: 'absolute', top: 12, right: 12,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: COLORS.secondary, paddingHorizontal: 8, paddingVertical: 3, borderRadius: BORDER_RADIUS.full,
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BORDER_RADIUS.full,
   },
   popularText: { fontSize: 10, fontWeight: '700', color: COLORS.white },
-  planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.md },
+  planHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.md,
+  },
   planName: { fontSize: 18, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
   planNameHighlighted: { color: COLORS.white },
   planPriceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
@@ -455,7 +460,9 @@ const styles = StyleSheet.create({
   planPrice: { fontSize: 30, fontWeight: '800', color: COLORS.text },
   planPeriod: { fontSize: 13, color: COLORS.textSecondary, paddingBottom: 4 },
   planBadge: {
-    backgroundColor: COLORS.primaryLight, paddingHorizontal: SPACING.sm, paddingVertical: 4,
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
     borderRadius: BORDER_RADIUS.md,
   },
   planBadgeText: { fontSize: 12, fontWeight: '700', color: COLORS.primary },
@@ -463,30 +470,70 @@ const styles = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   featureText: { fontSize: 13, color: COLORS.textSecondary },
   selectButton: {
-    backgroundColor: COLORS.primaryLight, borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.sm + 2, alignItems: 'center',
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
   },
   currentButton: { backgroundColor: COLORS.accentLight },
   selectButtonText: { fontSize: 14, fontWeight: '700', color: COLORS.primary },
-  disclaimer: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.xs, marginTop: SPACING.sm,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: COLORS.overlay,
+    justifyContent: 'flex-end',
   },
-  disclaimerText: { flex: 1, fontSize: 12, color: COLORS.textTertiary, lineHeight: 18 },
-  webviewContainer: { flex: 1, backgroundColor: COLORS.background },
-  webviewHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  modalCard: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    padding: SPACING.lg,
+    gap: SPACING.sm,
   },
-  closeButton: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.surfaceVariant, alignItems: 'center', justifyContent: 'center',
+  modalTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+  modalSubtitle: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 20, marginBottom: SPACING.sm },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginTop: SPACING.xs,
   },
-  webviewTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  secureBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: COLORS.accentLight, paddingHorizontal: 8, paddingVertical: 3, borderRadius: BORDER_RADIUS.full,
+  operatorRow: { flexDirection: 'row', gap: SPACING.sm },
+  operatorChip: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
   },
-  secureBadgeText: { fontSize: 11, fontWeight: '600', color: COLORS.accent },
-  webview: { flex: 1 },
+  operatorChipActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLight,
+  },
+  operatorChipText: { fontSize: 13, fontWeight: '600', color: COLORS.textSecondary },
+  operatorChipTextActive: { color: COLORS.primary },
+  input: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  primaryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  primaryButtonDisabled: { opacity: 0.7 },
+  primaryButtonText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+  secondaryButton: { alignItems: 'center', paddingVertical: SPACING.sm },
+  secondaryButtonText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
 });

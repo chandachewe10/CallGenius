@@ -5,10 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Switch,
   Alert,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +16,8 @@ import { COLORS, SPACING, BORDER_RADIUS, USE_CASE_CONFIG, SUBSCRIPTION_PLANS } f
 import { useSettings } from '../hooks/useSettings';
 import { useCallRecords } from '../hooks/useCallRecords';
 import { subscriptionService } from '../services/subscriptionService';
+import { hasOpenAiApiKey } from '../config/env';
+import { autoCallRecordingService } from '../services/autoCallRecordingService';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Settings'>;
@@ -26,9 +26,6 @@ type Props = {
 export function SettingsScreen({ navigation }: Props) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { clearAll, calls } = useCallRecords();
-  const [apiKeyVisible, setApiKeyVisible] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(settings.openaiApiKey);
-  const [isSaving, setIsSaving] = useState(false);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const versionTapCount = useRef(0);
   const versionTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,18 +46,6 @@ export function SettingsScreen({ navigation }: Props) {
       navigation.navigate('AdminLogin');
     }
   };
-
-  const handleSaveApiKey = useCallback(async () => {
-    setIsSaving(true);
-    try {
-      await updateSettings({ openaiApiKey: apiKeyInput.trim() });
-      Alert.alert('Saved', 'API key saved securely.');
-    } catch {
-      Alert.alert('Error', 'Failed to save API key.');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [apiKeyInput, updateSettings]);
 
   const handleClearData = useCallback(() => {
     Alert.alert(
@@ -88,7 +73,7 @@ export function SettingsScreen({ navigation }: Props) {
         style: 'destructive',
         onPress: async () => {
           await resetSettings();
-          setApiKeyInput('');
+          await autoCallRecordingService.start();
         },
       },
     ]);
@@ -124,51 +109,30 @@ export function SettingsScreen({ navigation }: Props) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <SettingsSection title="OpenAI Configuration" icon="key-outline">
-          <View style={styles.apiKeyContainer}>
-            <Text style={styles.apiKeyLabel}>API Key</Text>
-            <Text style={styles.apiKeyDesc}>
-              Required for transcription and summarization. Your key is stored securely on device.
-            </Text>
-            <View style={styles.apiKeyInputRow}>
-              <TextInput
-                style={styles.apiKeyInput}
-                value={apiKeyInput}
-                onChangeText={setApiKeyInput}
-                placeholder="sk-..."
-                placeholderTextColor={COLORS.textTertiary}
-                secureTextEntry={!apiKeyVisible}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <TouchableOpacity
-                style={styles.eyeButton}
-                onPress={() => setApiKeyVisible(v => !v)}
-              >
-                <Ionicons
-                  name={apiKeyVisible ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color={COLORS.textSecondary}
-                />
-              </TouchableOpacity>
+        <SettingsSection title="AI Configuration" icon="sparkles-outline">
+          {/* <View style={styles.envStatusRow}>
+            <View style={styles.settingsRowInfo}>
+              <Text style={styles.settingsRowLabel}>OpenAI API Key</Text>
+              <Text style={styles.settingsRowDesc}>
+                Configured in .env as EXPO_PUBLIC_OPENAI_API_KEY for all users.
+              </Text>
             </View>
-            <View style={styles.apiKeyActions}>
-              <TouchableOpacity
-                style={styles.linkButton}
-                onPress={() => Linking.openURL('https://platform.openai.com/api-keys')}
+            <View
+              style={[
+                styles.envStatusBadge,
+                hasOpenAiApiKey() ? styles.envStatusConfigured : styles.envStatusMissing,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.envStatusText,
+                  hasOpenAiApiKey() ? styles.envStatusTextConfigured : styles.envStatusTextMissing,
+                ]}
               >
-                <Ionicons name="open-outline" size={14} color={COLORS.primary} />
-                <Text style={styles.linkButtonText}>Get API Key</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
-                onPress={handleSaveApiKey}
-                disabled={isSaving}
-              >
-                <Text style={styles.saveButtonText}>{isSaving ? 'Saving...' : 'Save Key'}</Text>
-              </TouchableOpacity>
+                {hasOpenAiApiKey() ? 'Configured' : 'Missing'}
+              </Text>
             </View>
-          </View>
+          </View> */}
 
           <SettingsPickerRow
             label="GPT Model"
@@ -180,6 +144,19 @@ export function SettingsScreen({ navigation }: Props) {
         </SettingsSection>
 
         <SettingsSection title="Recording" icon="mic-outline">
+          <SettingsSwitchRow
+            label="Auto Record Phone Calls"
+            desc="Automatically record when a phone call connects"
+            value={settings.autoRecord}
+            onChange={async v => {
+              await updateSettings({ autoRecord: v });
+              if (v) {
+                await autoCallRecordingService.start();
+              } else {
+                autoCallRecordingService.stop();
+              }
+            }}
+          />
           <SettingsSwitchRow
             label="Auto Transcribe"
             desc="Automatically transcribe after recording stops"
@@ -474,72 +451,34 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
-  apiKeyContainer: {
+  envStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderLight,
   },
-  apiKeyLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 4,
+  envStatusBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.full,
   },
-  apiKeyDesc: {
+  envStatusConfigured: {
+    backgroundColor: COLORS.accentLight,
+  },
+  envStatusMissing: {
+    backgroundColor: COLORS.warningLight,
+  },
+  envStatusText: {
     fontSize: 12,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-    marginBottom: SPACING.sm,
+    fontWeight: '700',
   },
-  apiKeyInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingRight: SPACING.sm,
+  envStatusTextConfigured: {
+    color: COLORS.accent,
   },
-  apiKeyInput: {
-    flex: 1,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    fontSize: 14,
-    color: COLORS.text,
-    fontFamily: 'monospace',
-  },
-  eyeButton: {
-    padding: SPACING.xs,
-  },
-  apiKeyActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  linkButtonText: {
-    fontSize: 13,
-    color: COLORS.primary,
-    fontWeight: '500',
-  },
-  saveButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs + 2,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '600',
+  envStatusTextMissing: {
+    color: COLORS.warning,
   },
   settingsRow: {
     flexDirection: 'row',

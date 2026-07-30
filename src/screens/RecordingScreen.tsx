@@ -23,10 +23,11 @@ import { useSettings } from '../hooks/useSettings';
 import { WaveformVisualizer } from '../components/WaveformVisualizer';
 import { RecordButton } from '../components/RecordButton';
 import { LoadingOverlay } from '../components/LoadingOverlay';
-import { transcriptionService } from '../services/transcriptionService';
-import { summaryService } from '../services/summaryService';
 import { audioRecorderService } from '../services/audioRecorderService';
 import { storageService } from '../services/storageService';
+import { processCallRecording } from '../services/recordingProcessorService';
+import { autoCallRecordingService } from '../services/autoCallRecordingService';
+import { hasOpenAiApiKey } from '../config/env';
 import { generateId, formatDuration } from '../utils';
 
 type Props = {
@@ -73,21 +74,29 @@ export function RecordingScreen({ navigation, route }: Props) {
   }, [recordingError]);
 
   const handleStartRecording = useCallback(async () => {
-    if (!settings.openaiApiKey) {
+    if (!hasOpenAiApiKey()) {
       Alert.alert(
-        'API Key Required',
-        'Please add your OpenAI API key in Settings to enable transcription.',
+        'OpenAI Key Missing',
+        'Add EXPO_PUBLIC_OPENAI_API_KEY to your .env file to enable transcription.',
         [
-          { text: 'Go to Settings', onPress: () => navigation.navigate('Settings') },
           { text: 'Record Anyway', onPress: () => beginRecording() },
+          { text: 'Cancel', style: 'cancel' },
         ]
       );
       return;
     }
     await beginRecording();
-  }, [settings.openaiApiKey, navigation]);
+  }, []);
 
   const beginRecording = async () => {
+    if (autoCallRecordingService.hasActiveRecording()) {
+      Alert.alert(
+        'Call Recording Active',
+        'An automatic phone call recording is in progress. Stop the call first or wait until it ends.'
+      );
+      return;
+    }
+
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       await startRecording();
@@ -135,13 +144,13 @@ export function RecordingScreen({ navigation, route }: Props) {
         endTime,
         duration: recordingDuration,
         audioUri: savedUri,
-        status: settings.openaiApiKey ? 'processing' : 'completed',
+        status: hasOpenAiApiKey() && settings.autoTranscribe ? 'processing' : 'completed',
       };
       await storageService.saveCall(updatedCall);
       await updateCall(updatedCall);
 
-      if (settings.openaiApiKey) {
-        await processRecording(updatedCall, savedUri);
+      if (hasOpenAiApiKey() && settings.autoTranscribe) {
+        await processManualRecording(updatedCall, savedUri);
       } else {
         setProcessingStep('idle');
         navigation.navigate('CallDetail', { callId });
@@ -153,42 +162,13 @@ export function RecordingScreen({ navigation, route }: Props) {
     }
   }, [stopRecording, duration, settings, updateCall, navigation]);
 
-  const processRecording = async (call: CallRecord, audioUri: string) => {
+  const processManualRecording = async (call: CallRecord, audioUri: string) => {
     const callId = call.id;
 
     try {
       setProcessingStep('transcribing');
-      const transcription = await transcriptionService.transcribeAudio(
-        audioUri,
-        settings.openaiApiKey,
-        settings.whisperModel,
-        settings.language
-      );
-
-      let updatedCall: CallRecord = {
-        ...call,
-        transcription,
-        status: 'processing',
-      };
-      await storageService.saveCall(updatedCall);
-      await updateCall(updatedCall);
-
-      setProcessingStep('summarizing');
-      const summary = await summaryService.generateSummary(
-        transcription,
-        settings.openaiApiKey,
-        settings.gptModel,
-        undefined,
-        settings.useCase
-      );
-
-      updatedCall = {
-        ...updatedCall,
-        summary,
-        status: 'completed',
-      };
-      await storageService.saveCall(updatedCall);
-      await updateCall(updatedCall);
+      const processedCall = await processCallRecording(call, audioUri, settings);
+      await updateCall(processedCall);
 
       setProcessingStep('done');
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -372,15 +352,15 @@ export function RecordingScreen({ navigation, route }: Props) {
                 ? isPaused
                   ? 'Tap Resume to continue recording'
                   : 'Tap the button to stop recording'
-                : 'Tap the button to start recording'}
+                : 'Tap the button to start a manual recording (meetings, notes, etc.)'}
             </Text>
           </View>
 
           <View style={styles.infoCard}>
             <Ionicons name="information-circle-outline" size={20} color={COLORS.primary} />
             <Text style={styles.infoText}>
-              This app records audio through the microphone. Place your phone near the speaker
-              for the best call recording quality. AI transcription uses OpenAI Whisper.
+              Phone calls are recorded automatically when connected. Use manual recording here for
+              meetings and other audio.
             </Text>
           </View>
         </ScrollView>

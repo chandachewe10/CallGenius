@@ -56,20 +56,18 @@ export const BORDER_RADIUS = {
 export const STORAGE_KEYS = {
   CALLS: '@CallRecorderPro:calls',
   SETTINGS: '@CallRecorderPro:settings',
-  API_KEY: '@CallRecorderPro:openai_api_key',
-  LENCO_PUBLIC_KEY: '@CallRecorderPro:lenco_public_key',
-  LENCO_SECRET_KEY: '@CallRecorderPro:lenco_secret_key',
-  ADMIN_PIN: '@CallRecorderPro:admin_pin_hash',
   ADMIN_SETTINGS: '@CallRecorderPro:admin_settings',
   SUBSCRIPTION: '@CallRecorderPro:subscription',
-  ADMIN_OPENAI_KEY: '@CallRecorderPro:admin_openai_key',
+  // SecureStore only allows alphanumeric, ".", "-", "_"
+  LENCO_PUBLIC_KEY: 'CallRecorderPro.lenco_public_key',
+  LENCO_SECRET_KEY: 'CallRecorderPro.lenco_secret_key',
+  ADMIN_PIN: 'CallRecorderPro.admin_pin_hash',
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  openaiApiKey: '',
   whisperModel: 'whisper-1',
   gptModel: 'gpt-4o-mini',
-  autoRecord: false,
+  autoRecord: true,
   autoTranscribe: true,
   language: 'en',
   storageLimit: 500,

@@ -4,11 +4,11 @@ A cross-platform mobile application for recording, transcribing, and analyzing c
 
 ## Features
 
-- **Call Recording** — Records audio through the device microphone during phone calls
+- **Call Recording** — Automatically records phone calls when they connect; manual recording remains available for meetings
 - **AI Transcription** — Uses OpenAI Whisper to convert audio to text with timestamps
 - **Smart Summaries** — GPT-4 powered summaries with customer issue detection, resolution status, sentiment analysis, action items, and agent performance insights
 - **Call Management** — Browse, search, and manage call history
-- **Secure Storage** — API key stored in device's secure keychain
+- **Shared API Key** — OpenAI key configured once in `.env` for all app users
 - **Cross-Platform** — iOS and Android support via Expo
 
 ## Tech Stack
@@ -20,13 +20,16 @@ A cross-platform mobile application for recording, transcribing, and analyzing c
 | Transcription | OpenAI Whisper API (`whisper-1`) |
 | Summarization | OpenAI GPT-4o / GPT-4o-mini |
 | Navigation | React Navigation v7 (Native Stack) |
-| Storage | AsyncStorage + Expo SecureStore |
+| Storage | AsyncStorage |
+| Config | `.env` (`EXPO_PUBLIC_OPENAI_API_KEY`) |
 | File System | expo-file-system (v2 API) |
 
 ## Getting Started
 
 ### Prerequisites
 
+- Node.js 18+
+- Expo Go app on your device **or** EAS Build for production
 - Node.js 18+
 - Expo Go app on your device **or** EAS Build for production
 - OpenAI API key — get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
@@ -36,6 +39,8 @@ A cross-platform mobile application for recording, transcribing, and analyzing c
 ```bash
 cd CallRecorderPro
 npm install
+cp .env.example .env
+# Edit .env and set EXPO_PUBLIC_OPENAI_API_KEY
 npx expo start
 ```
 
@@ -43,10 +48,12 @@ Scan the QR code with Expo Go to run on your device.
 
 ### Configuration
 
-1. Open the app and tap the **Settings** icon (top right)
-2. Paste your OpenAI API key and tap **Save Key**
-3. Select your preferred GPT model and transcription language
-4. Return to Home and tap the microphone FAB to start recording
+1. Copy `.env.example` to `.env`
+2. Set `EXPO_PUBLIC_OPENAI_API_KEY` to your OpenAI API key
+3. Restart Expo after changing `.env`: `npx expo start -c`
+4. Phone calls are **auto-recorded by default** when they connect (requires a dev/production build with call detection on Android)
+5. Use the microphone FAB on Home for **manual recordings** (meetings, notes, etc.)
+6. Adjust auto-record, transcription, and GPT model preferences in **Settings**
 
 ## Architecture
 
@@ -56,11 +63,16 @@ src/
 ├── constants/      # Colors, spacing, OpenAI prompts, recording options
 ├── services/
 │   ├── audioRecorderService.ts    # expo-av recording lifecycle management
+│   ├── autoCallRecordingService.ts # Background phone call auto-recording
+│   ├── recordingProcessorService.ts # Shared transcribe + summarize pipeline
 │   ├── callDetectionService.ts    # Native call state detection (Android)
 │   ├── transcriptionService.ts    # Whisper API integration
 │   ├── summaryService.ts          # GPT-4 customer support analysis
-│   └── storageService.ts          # Persistent storage (AsyncStorage + SecureStore)
+│   └── storageService.ts          # Persistent storage (AsyncStorage)
+├── config/
+│   └── env.ts                     # Reads EXPO_PUBLIC_OPENAI_API_KEY from .env
 ├── hooks/
+│   ├── useAutoCallRecording.ts    # Enables background auto-recording
 │   ├── useAudioRecorder.ts        # Recording state + metering hook
 │   ├── useCallRecords.ts          # Call list CRUD hook
 │   └── useSettings.ts             # App settings hook
@@ -68,7 +80,7 @@ src/
 │   ├── HomeScreen.tsx             # Call list with stats and FAB
 │   ├── RecordingScreen.tsx        # Active recording UI with waveform
 │   ├── CallDetailScreen.tsx       # Summary, transcript, and details tabs
-│   └── SettingsScreen.tsx         # API key, model, and preferences
+│   └── SettingsScreen.tsx         # Model, auto-record, and preferences
 └── components/
     ├── WaveformVisualizer.tsx     # Animated audio waveform
     ├── RecordButton.tsx           # Pulsing record/stop button
@@ -127,7 +139,36 @@ eas build --platform android
 
 ## Environment Variables
 
-No environment variables are needed at build time. The OpenAI API key is entered by the user at runtime and stored in the device's secure keychain.
+Create a `.env` file in the project root (see `.env.example`):
+
+```bash
+EXPO_PUBLIC_OPENAI_API_KEY=sk-your-openai-api-key-here
+EXPO_PUBLIC_LENCO_SECRET_KEY=your-lenco-secret-key
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_OPENAI_API_KEY` | Whisper transcription + GPT summaries |
+| `EXPO_PUBLIC_LENCO_SECRET_KEY` | Lenco mobile money collections API (Bearer token) |
+| `EXPO_PUBLIC_LENCO_API_BASE_URL` | Optional — defaults to `https://api.lenco.co/access/v2` |
+
+Do not commit `.env` to git.
+
+> **Note:** `EXPO_PUBLIC_` variables are bundled into the app. For production, rotate keys and monitor usage.
+
+## Payments (Lenco Mobile Money)
+
+Subscriptions are paid via the **Lenco collections API**:
+
+```
+POST https://api.lenco.co/access/v2/collections/mobile-money
+Authorization: Bearer {LENCO_SECRET_KEY}
+```
+
+1. User selects a plan
+2. Chooses **Airtel** or **MTN** and enters their phone number
+3. App sends the collection request — user approves the prompt on their phone
+4. Subscription activates on success (or stays pending until confirmed)
 
 ## Legal Notice
 

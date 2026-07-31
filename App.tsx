@@ -15,6 +15,7 @@ import { AdminLoginScreen } from './src/screens/AdminLoginScreen';
 import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 import { RootStackParamList } from './src/types';
 import { storageService } from './src/services/storageService';
+import { authService } from './src/services/authService';
 import { useSettings } from './src/hooks/useSettings';
 import { useAutoCallRecording } from './src/hooks/useAutoCallRecording';
 import { COLORS } from './src/constants';
@@ -32,9 +33,11 @@ export default function App() {
     useState<keyof RootStackParamList | null>(null);
 
   useEffect(() => {
-    storageService
-      .getSettings()
-      .then(settings => {
+    Promise.all([
+      storageService.getSettings(),
+      authService.ensureSession(),
+    ])
+      .then(([settings]) => {
         setInitialRoute(settings.onboardingComplete ? 'Home' : 'Onboarding');
       })
       .catch(() => {

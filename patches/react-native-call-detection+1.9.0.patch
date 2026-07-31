@@ -1,0 +1,12 @@
+diff --git a/node_modules/react-native-call-detection/android/build.gradle b/node_modules/react-native-call-detection/android/build.gradle
+index 8903c5f..d50e77c 100644
+--- a/node_modules/react-native-call-detection/android/build.gradle
++++ b/node_modules/react-native-call-detection/android/build.gradle
+@@ -29,6 +29,6 @@ repositories{
+ 
+ dependencies {
+     api fileTree(dir: 'libs', include: ['*.jar'])
+-    api 'com.android.support:appcompat-v7:23.0.1'
++    api 'androidx.appcompat:appcompat:1.7.0'
+     api 'com.facebook.react:react-native:+'
+ }

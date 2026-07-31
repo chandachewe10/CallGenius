@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { AdminApiKey, AdminSettings, UserSubscription } from '../types';
 import { STORAGE_KEYS } from '../constants';
-import { getOpenAiApiKey, getLencoSecretKey } from '../config/env';
+import { getOpenAiApiKey, getLencoSecretKey, hasSupabaseConfig } from '../config/env';
+import { supabaseSubscriptionService } from './supabaseSubscriptionService';
+import { authService } from './authService';
 
 function simpleHash(pin: string): string {
   let hash = 0;
@@ -134,28 +136,75 @@ class AdminService {
     await AsyncStorage.setItem(STORAGE_KEYS.ADMIN_SETTINGS, JSON.stringify(settings));
   }
 
-  async getAllSubscriptions(): Promise<Array<{ userId: string; sub: UserSubscription }>> {
+  async getAllSubscriptions(): Promise<Array<{ userId: string; sub: UserSubscription; phone?: string }>> {
+    if (hasSupabaseConfig() && (await authService.isSupabaseAdmin())) {
+      const cloudSubs = await supabaseSubscriptionService.fetchAllSubscriptions();
+      if (cloudSubs.length > 0) return cloudSubs;
+    }
+
     const data = await AsyncStorage.getItem('@CRP:all_subscriptions');
     if (!data) return [];
     return JSON.parse(data);
   }
 
   async confirmSubscription(reference: string): Promise<void> {
-    const subs = await this.getAllSubscriptions();
+    if (hasSupabaseConfig() && (await authService.isSupabaseAdmin())) {
+      const ok = await supabaseSubscriptionService.confirmSubscription(reference);
+      if (ok) return;
+    }
+
+    const subs = await this.getLocalSubscriptions();
     const idx = subs.findIndex(s => s.sub.reference === reference);
     if (idx >= 0) {
       subs[idx].sub.status = 'active';
       await AsyncStorage.setItem('@CRP:all_subscriptions', JSON.stringify(subs));
     }
+
+    const localSub = await AsyncStorage.getItem(STORAGE_KEYS.SUBSCRIPTION);
+    if (localSub) {
+      const sub = JSON.parse(localSub) as UserSubscription;
+      if (sub.reference === reference) {
+        sub.status = 'active';
+        sub.expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+        await AsyncStorage.setItem(STORAGE_KEYS.SUBSCRIPTION, JSON.stringify(sub));
+      }
+    }
   }
 
   async revokeSubscription(reference: string): Promise<void> {
-    const subs = await this.getAllSubscriptions();
+    if (hasSupabaseConfig() && (await authService.isSupabaseAdmin())) {
+      const ok = await supabaseSubscriptionService.revokeSubscription(reference);
+      if (ok) return;
+    }
+
+    const subs = await this.getLocalSubscriptions();
     const idx = subs.findIndex(s => s.sub.reference === reference);
     if (idx >= 0) {
       subs[idx].sub.status = 'cancelled';
       await AsyncStorage.setItem('@CRP:all_subscriptions', JSON.stringify(subs));
     }
+  }
+
+  async signInSupabaseAdmin(email: string, password: string) {
+    return authService.signInAdmin(email, password);
+  }
+
+  async signOutSupabaseAdmin() {
+    return authService.signOutAdmin();
+  }
+
+  async isSupabaseAdminConnected(): Promise<boolean> {
+    return authService.isSupabaseAdmin();
+  }
+
+  isSupabaseConfigured(): boolean {
+    return hasSupabaseConfig();
+  }
+
+  private async getLocalSubscriptions(): Promise<Array<{ userId: string; sub: UserSubscription }>> {
+    const data = await AsyncStorage.getItem('@CRP:all_subscriptions');
+    if (!data) return [];
+    return JSON.parse(data);
   }
 
   private getStorageKey(service: AdminApiKey['service']): string {

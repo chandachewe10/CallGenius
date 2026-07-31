@@ -20,7 +20,7 @@ A cross-platform mobile application for recording, transcribing, and analyzing c
 | Transcription | OpenAI Whisper API (`whisper-1`) |
 | Summarization | OpenAI GPT-4o / GPT-4o-mini |
 | Navigation | React Navigation v7 (Native Stack) |
-| Storage | AsyncStorage |
+| Storage | AsyncStorage + Supabase (optional) |
 | Config | `.env` (`EXPO_PUBLIC_OPENAI_API_KEY`) |
 | File System | expo-file-system (v2 API) |
 
@@ -144,12 +144,16 @@ Create a `.env` file in the project root (see `.env.example`):
 ```bash
 EXPO_PUBLIC_OPENAI_API_KEY=sk-your-openai-api-key-here
 EXPO_PUBLIC_LENCO_SECRET_KEY=your-lenco-secret-key
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
 | Variable | Purpose |
 |----------|---------|
 | `EXPO_PUBLIC_OPENAI_API_KEY` | Whisper transcription + GPT summaries |
 | `EXPO_PUBLIC_LENCO_SECRET_KEY` | Lenco mobile money collections API (Bearer token) |
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL (optional — enables cloud subscriptions) |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous/public API key |
 | `EXPO_PUBLIC_LENCO_API_BASE_URL` | Optional — defaults to `https://api.lenco.co/access/v2` |
 
 Do not commit `.env` to git.
@@ -169,6 +173,32 @@ Authorization: Bearer {LENCO_SECRET_KEY}
 2. Chooses **Airtel** or **MTN** and enters their phone number
 3. App sends the collection request — user approves the prompt on their phone
 4. Subscription activates on success (or stays pending until confirmed)
+
+## Supabase (Cloud Backend)
+
+When `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are set:
+
+1. Each app install signs in anonymously and syncs subscriptions/payments to Supabase
+2. Admin can sign in with a Supabase admin account in **Admin Dashboard → Supabase Cloud**
+3. Confirm or revoke payments from any device
+
+### Setup
+
+1. Create a project at [supabase.com](https://supabase.com)
+2. Run `supabase/schema.sql` in **SQL Editor**
+3. Enable **Anonymous sign-ins**: Authentication → Providers → Anonymous
+4. Create an admin user (Authentication → Users → Add user)
+5. Run `supabase/make-admin.sql` to grant admin access
+6. Run `supabase/restore-subscription.sql` so users can restore on a new device
+7. Add URL and anon key to `.env`, then restart Expo: `npx expo start -c`
+
+### Admin access
+
+Settings → **Admin Panel** → sign in with your Supabase admin email and password (the account you created in step 4). No per-device PIN is required when Supabase is configured.
+
+### Lost device / new phone
+
+Users can open **Subscription → Restore Subscription** and enter the mobile money phone number used to pay. The active subscription is linked to that number in Supabase and moved to the new device.
 
 ## Legal Notice
 

@@ -20,3 +20,15 @@ export function getLencoSecretKey(): string {
 export function hasLencoSecretKey(): boolean {
   return getLencoSecretKey().length > 0;
 }
+
+export function getSupabaseUrl(): string {
+  return process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
+}
+
+export function getSupabaseAnonKey(): string {
+  return process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
+}
+
+export function hasSupabaseConfig(): boolean {
+  return getSupabaseUrl().length > 0 && getSupabaseAnonKey().length > 0;
+}

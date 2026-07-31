@@ -10,6 +10,7 @@ import {
   Vibration,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants';
 import { adminService } from '../services/adminService';
+import { hasSupabaseConfig } from '../config/env';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'AdminLogin'>;
@@ -25,7 +27,10 @@ type Props = {
 const PIN_LENGTH = 6;
 
 export function AdminLoginScreen({ navigation }: Props) {
+  const useSupabaseAuth = hasSupabaseConfig();
   const [isSetup, setIsSetup] = useState<boolean | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [step, setStep] = useState<'enter' | 'confirm'>('enter');
@@ -34,8 +39,19 @@ export function AdminLoginScreen({ navigation }: Props) {
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
+    if (useSupabaseAuth) {
+      adminService.isSupabaseAdminConnected().then(isAdmin => {
+        if (isAdmin) {
+          navigation.replace('AdminDashboard');
+          return;
+        }
+        setIsSetup(true);
+      });
+      return;
+    }
+
     adminService.isAdminConfigured().then(setIsSetup);
-  }, []);
+  }, [navigation, useSupabaseAuth]);
 
   const shake = () => {
     Vibration.vibrate(200);
@@ -46,6 +62,25 @@ export function AdminLoginScreen({ navigation }: Props) {
       Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
     ]).start();
+  };
+
+  const handleSupabaseSignIn = async () => {
+    if (!email.trim() || !password) {
+      Alert.alert('Missing credentials', 'Enter your Supabase admin email and password.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await adminService.signInSupabaseAdmin(email.trim(), password);
+      if (!result.ok) {
+        Alert.alert('Sign-in failed', result.error ?? 'Unable to sign in.');
+        return;
+      }
+      navigation.replace('AdminDashboard');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handlePinChange = (text: string) => {
@@ -113,9 +148,80 @@ export function AdminLoginScreen({ navigation }: Props) {
     }
   };
 
-  const currentPin = step === 'confirm' ? confirmPin : pin;
+  if (isSetup === null) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
-  if (isSetup === null) return null;
+  if (useSupabaseAuth) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+              <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.content}>
+            <View style={styles.iconContainer}>
+              <Ionicons name="shield-checkmark" size={40} color={COLORS.primary} />
+            </View>
+
+            <Text style={styles.title}>Admin Sign In</Text>
+            <Text style={styles.subtitle}>
+              
+            </Text>
+
+            <View style={styles.form}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Admin email"
+                placeholderTextColor={COLORS.textTertiary}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                editable={!isLoading}
+              />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Password"
+                placeholderTextColor={COLORS.textTertiary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+                editable={!isLoading}
+              />
+              <TouchableOpacity
+                style={[styles.primaryButton, isLoading && styles.primaryButtonDisabled]}
+                onPress={handleSupabaseSignIn}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Sign In</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  const currentPin = step === 'confirm' ? confirmPin : pin;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -204,6 +310,12 @@ export function AdminLoginScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+  },
   header: { paddingHorizontal: SPACING.md, paddingTop: SPACING.sm },
   backButton: {
     width: 40, height: 40, borderRadius: 20,
@@ -225,6 +337,36 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14, color: COLORS.textSecondary, textAlign: 'center',
     lineHeight: 21, marginBottom: SPACING.xl,
+  },
+  form: {
+    width: '100%',
+    gap: SPACING.md,
+  },
+  textInput: {
+    width: '100%',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  primaryButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.7,
+  },
+  primaryButtonText: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
   },
   pinContainer: {
     flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.md,

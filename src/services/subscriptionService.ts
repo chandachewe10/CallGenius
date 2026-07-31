@@ -1,19 +1,37 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserSubscription, SubscriptionPlan } from '../types';
 import { STORAGE_KEYS } from '../constants';
+import { LencoMobileOperator } from './paymentService';
+import { supabaseSubscriptionService } from './supabaseSubscriptionService';
 
 const ALL_SUBSCRIPTIONS_KEY = '@CRP:all_subscriptions';
 
+export interface PendingPaymentDetails {
+  operator: LencoMobileOperator;
+  phone: string;
+  lencoTransactionId?: string;
+}
+
 class SubscriptionService {
   async getSubscription(): Promise<UserSubscription | null> {
-    const data = await AsyncStorage.getItem(STORAGE_KEYS.SUBSCRIPTION);
-    if (!data) return null;
-    return JSON.parse(data) as UserSubscription;
+    const cloudSub = await supabaseSubscriptionService.fetchUserSubscription();
+    const localData = await AsyncStorage.getItem(STORAGE_KEYS.SUBSCRIPTION);
+    const localSub = localData ? (JSON.parse(localData) as UserSubscription) : null;
+
+    if (cloudSub) {
+      if (!localSub || cloudSub.createdAt >= localSub.createdAt) {
+        await AsyncStorage.setItem(STORAGE_KEYS.SUBSCRIPTION, JSON.stringify(cloudSub));
+        return cloudSub;
+      }
+    }
+
+    return localSub;
   }
 
   async saveSubscription(sub: UserSubscription): Promise<void> {
     await AsyncStorage.setItem(STORAGE_KEYS.SUBSCRIPTION, JSON.stringify(sub));
     await this.registerSubscription(sub);
+    await supabaseSubscriptionService.upsertSubscription(sub);
   }
 
   async isSubscribed(): Promise<boolean> {
@@ -37,7 +55,8 @@ class SubscriptionService {
   async createPendingSubscription(
     plan: SubscriptionPlan,
     reference: string,
-    amount: number
+    amount: number,
+    payment?: PendingPaymentDetails,
   ): Promise<UserSubscription> {
     const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
     const sub: UserSubscription = {
@@ -50,13 +69,24 @@ class SubscriptionService {
       createdAt: Date.now(),
     };
     await this.saveSubscription(sub);
+
+    if (payment) {
+      await supabaseSubscriptionService.createPayment({
+        reference,
+        amount,
+        operator: payment.operator,
+        phone: payment.phone,
+        lencoTransactionId: payment.lencoTransactionId,
+      });
+    }
+
     return sub;
   }
 
   async activateSubscription(
     plan: SubscriptionPlan,
     reference: string,
-    lencoDepositId?: string
+    lencoDepositId?: string,
   ): Promise<UserSubscription> {
     const existing = await this.getSubscription();
     const sub: UserSubscription = {
@@ -70,6 +100,7 @@ class SubscriptionService {
       createdAt: existing?.reference === reference ? existing.createdAt : Date.now(),
     };
     await this.saveSubscription(sub);
+    await supabaseSubscriptionService.updatePaymentStatus(reference, 'paid', lencoDepositId);
     return sub;
   }
 
@@ -97,6 +128,13 @@ class SubscriptionService {
   getRemainingDays(sub: UserSubscription): number {
     if (!sub.expiresAt) return 0;
     return Math.max(0, Math.ceil((sub.expiresAt - Date.now()) / (1000 * 60 * 60 * 24)));
+  }
+
+  async restoreByPhone(phone: string): Promise<UserSubscription | null> {
+    const restored = await supabaseSubscriptionService.restoreSubscriptionByPhone(phone);
+    if (!restored) return null;
+    await this.saveSubscription(restored);
+    return restored;
   }
 
   private async registerSubscription(sub: UserSubscription): Promise<void> {

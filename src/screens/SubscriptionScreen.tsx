@@ -32,7 +32,7 @@ import {
   LencoMobileOperator,
   suggestOperatorFromPhone,
 } from '../services/paymentService';
-import { hasLencoSecretKey } from '../config/env';
+import { hasLencoSecretKey, hasSupabaseConfig } from '../config/env';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Subscription'>;
@@ -46,6 +46,9 @@ export function SubscriptionScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
   const [operator, setOperator] = useState<LencoMobileOperator>('airtel');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showRestoreForm, setShowRestoreForm] = useState(false);
+  const [restorePhone, setRestorePhone] = useState('');
+  const [isRestoring, setIsRestoring] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -111,6 +114,10 @@ export function SubscriptionScreen({ navigation }: Props) {
         selectedPlan.id,
         session.reference,
         session.amount,
+        {
+          operator: session.operator,
+          phone: session.phone,
+        },
       );
 
       const response = await collectMobileMoney(
@@ -147,6 +154,42 @@ export function SubscriptionScreen({ navigation }: Props) {
       );
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleRestoreSubscription = async () => {
+    const normalizedPhone = restorePhone.trim();
+    if (!normalizedPhone || normalizedPhone.length < 9) {
+      Alert.alert('Phone Required', 'Enter the mobile money number used when you subscribed.');
+      return;
+    }
+
+    setIsRestoring(true);
+    try {
+      const restored = await subscriptionService.restoreByPhone(normalizedPhone);
+      if (!restored) {
+        Alert.alert(
+          'No Subscription Found',
+          'No active subscription was found for that phone number. Check the number or contact support.',
+        );
+        return;
+      }
+
+      setShowRestoreForm(false);
+      setRestorePhone('');
+      await loadData();
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        'Subscription Restored',
+        `Your ${restored.plan.toUpperCase()} plan is now active on this device.`,
+      );
+    } catch (error) {
+      Alert.alert(
+        'Restore Failed',
+        error instanceof Error ? error.message : 'Unable to restore subscription.',
+      );
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -198,7 +241,60 @@ export function SubscriptionScreen({ navigation }: Props) {
           </View>
         )}
 
-       
+        {hasSupabaseConfig() && (
+          <View style={styles.restoreCard}>
+            <View style={styles.restoreHeader}>
+              <Ionicons name="phone-portrait-outline" size={20} color={COLORS.primary} />
+              <Text style={styles.restoreTitle}>New phone or lost device?</Text>
+            </View>
+            <Text style={styles.restoreDesc}>
+              Restore your subscription using the mobile money number you paid with. No account login needed.
+            </Text>
+            {!showRestoreForm ? (
+              <TouchableOpacity
+                style={styles.restoreButton}
+                onPress={() => setShowRestoreForm(true)}
+              >
+                <Text style={styles.restoreButtonText}>Restore Subscription</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.restoreForm}>
+                <TextInput
+                  style={styles.restoreInput}
+                  placeholder="e.g. 0973750029"
+                  placeholderTextColor={COLORS.textTertiary}
+                  value={restorePhone}
+                  onChangeText={setRestorePhone}
+                  keyboardType="phone-pad"
+                  editable={!isRestoring}
+                />
+                <View style={styles.restoreActions}>
+                  <TouchableOpacity
+                    style={styles.restoreCancelBtn}
+                    onPress={() => {
+                      setShowRestoreForm(false);
+                      setRestorePhone('');
+                    }}
+                    disabled={isRestoring}
+                  >
+                    <Text style={styles.restoreCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.restoreSubmitBtn}
+                    onPress={handleRestoreSubscription}
+                    disabled={isRestoring}
+                  >
+                    {isRestoring ? (
+                      <ActivityIndicator color={COLORS.white} size="small" />
+                    ) : (
+                      <Text style={styles.restoreSubmitText}>Restore</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         <Text style={styles.sectionTitle}>Choose a Plan</Text>
 
@@ -405,6 +501,85 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: BORDER_RADIUS.full },
   statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
   expiresText: { fontSize: 13, color: COLORS.textSecondary },
+  restoreCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  restoreHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  restoreTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  restoreDesc: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 19,
+  },
+  restoreButton: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  restoreButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  restoreForm: {
+    gap: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  restoreInput: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  restoreActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  restoreCancelBtn: {
+    flex: 1,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  restoreCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  restoreSubmitBtn: {
+    flex: 1,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.primary,
+  },
+  restoreSubmitText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
   gatewayCard: {
     flexDirection: 'row',
     gap: SPACING.sm,

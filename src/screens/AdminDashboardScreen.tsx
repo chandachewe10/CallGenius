@@ -13,10 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
-import { RootStackParamList, AdminApiKey, AdminSettings } from '../types';
+import { RootStackParamList, AdminApiKey, AdminSettings, UserSubscription } from '../types';
 import { COLORS, SPACING, BORDER_RADIUS } from '../constants';
 import { adminService } from '../services/adminService';
-import { hasOpenAiApiKey, hasLencoSecretKey } from '../config/env';
+import { hasOpenAiApiKey, hasLencoSecretKey, hasSupabaseConfig } from '../config/env';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'AdminDashboard'>;
@@ -44,23 +44,36 @@ const API_KEY_ENTRIES: ApiKeyEntry[] = [
 
 export function AdminDashboardScreen({ navigation }: Props) {
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
-  const [subscriptions, setSubscriptions] = useState<Array<{ userId: string; sub: any }>>([]);
+  const [subscriptions, setSubscriptions] = useState<Array<{ userId: string; sub: UserSubscription; phone?: string }>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [addingKey, setAddingKey] = useState<ApiKeyService | null>(null);
   const [keyInput, setKeyInput] = useState('');
+  const [supabaseAdminConnected, setSupabaseAdminConnected] = useState(false);
 
   const load = useCallback(async () => {
-    const [settings, subs] = await Promise.all([
+    const [settings, subs, isCloudAdmin] = await Promise.all([
       adminService.getAdminSettings(),
       adminService.getAllSubscriptions(),
+      adminService.isSupabaseAdminConnected(),
     ]);
     setAdminSettings(settings);
     setSubscriptions(subs);
+    setSupabaseAdminConnected(isCloudAdmin);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig()) return;
+
+    adminService.isSupabaseAdminConnected().then(isAdmin => {
+      if (!isAdmin) {
+        navigation.replace('AdminLogin');
+      }
+    });
+  }, [navigation]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -73,8 +86,12 @@ export function AdminDashboardScreen({ navigation }: Props) {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Logout',
-        onPress: () => {
-          adminService.logout();
+        onPress: async () => {
+          if (hasSupabaseConfig()) {
+            await adminService.signOutSupabaseAdmin();
+          } else {
+            adminService.logout();
+          }
           navigation.replace('Settings');
         },
       },
@@ -324,6 +341,31 @@ export function AdminDashboardScreen({ navigation }: Props) {
           })}
         </Section>
 
+        {hasSupabaseConfig() && (
+          <Section
+            title="Supabase Cloud"
+            icon="cloud-outline"
+            subtitle="Signed in with your Supabase admin account."
+          >
+            <View style={styles.apiKeyCard}>
+              <View style={styles.keyStatusRow}>
+                <View style={styles.keySet}>
+                  <Ionicons
+                    name={supabaseAdminConnected ? 'checkmark-circle' : 'alert-circle-outline'}
+                    size={16}
+                    color={supabaseAdminConnected ? COLORS.accent : COLORS.warning}
+                  />
+                  <Text style={styles.keyHint}>
+                    {supabaseAdminConnected
+                      ? 'Connected — viewing all cloud subscriptions'
+                      : 'Not connected'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </Section>
+        )}
+
         <Section
           title="Subscriptions"
           icon="card-outline"
@@ -336,12 +378,13 @@ export function AdminDashboardScreen({ navigation }: Props) {
               <Text style={styles.emptySubDesc}>Users who subscribe will appear here for payment confirmation.</Text>
             </View>
           ) : (
-            subscriptions.map(({ userId, sub }, i) => (
+            subscriptions.map(({ userId, sub, phone }, i) => (
               <View key={i} style={styles.subCard}>
                 <View style={styles.subCardHeader}>
                   <View>
                     <Text style={styles.subPlan}>{sub.plan?.toUpperCase()} Plan</Text>
                     <Text style={styles.subRef}>Ref: {sub.reference ?? 'N/A'}</Text>
+                    {phone && <Text style={styles.subDetail}>Phone: {phone}</Text>}
                   </View>
                   <View style={[
                     styles.subStatusBadge,
@@ -373,18 +416,18 @@ export function AdminDashboardScreen({ navigation }: Props) {
                   )}
                 </View>
 
-                {sub.status === 'pending' && (
+                {sub.status === 'pending' && sub.reference && (
                   <View style={styles.subActions}>
                     <TouchableOpacity
                       style={styles.confirmBtn}
-                      onPress={() => handleConfirmPayment(sub.reference)}
+                      onPress={() => handleConfirmPayment(sub.reference!)}
                     >
                       <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.accent} />
                       <Text style={styles.confirmBtnText}>Confirm Payment</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.revokeBtn}
-                      onPress={() => handleRevokePayment(sub.reference)}
+                      onPress={() => handleRevokePayment(sub.reference!)}
                     >
                       <Ionicons name="close-circle-outline" size={16} color={COLORS.danger} />
                       <Text style={styles.revokeBtnText}>Revoke</Text>
@@ -392,10 +435,10 @@ export function AdminDashboardScreen({ navigation }: Props) {
                   </View>
                 )}
 
-                {sub.status === 'active' && (
+                {sub.status === 'active' && sub.reference && (
                   <TouchableOpacity
                     style={styles.revokeBtn}
-                    onPress={() => handleRevokePayment(sub.reference)}
+                    onPress={() => handleRevokePayment(sub.reference!)}
                   >
                     <Ionicons name="close-circle-outline" size={16} color={COLORS.danger} />
                     <Text style={styles.revokeBtnText}>Revoke Subscription</Text>

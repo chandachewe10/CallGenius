@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,25 +27,10 @@ export function SettingsScreen({ navigation }: Props) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { clearAll, calls } = useCallRecords();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const versionTapCount = useRef(0);
-  const versionTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     subscriptionService.getSubscription().then(setSubscription);
   }, []);
-
-  const handleVersionTap = () => {
-    versionTapCount.current += 1;
-    if (versionTapTimer.current) clearTimeout(versionTapTimer.current);
-    versionTapTimer.current = setTimeout(() => {
-      versionTapCount.current = 0;
-    }, 2000);
-
-    if (versionTapCount.current >= 7) {
-      versionTapCount.current = 0;
-      navigation.navigate('AdminLogin');
-    }
-  };
 
   const handleClearData = useCallback(() => {
     Alert.alert(
@@ -260,11 +245,26 @@ export function SettingsScreen({ navigation }: Props) {
           </TouchableOpacity>
         </SettingsSection>
 
+        <SettingsSection title="Admin" icon="shield-checkmark-outline">
+          <TouchableOpacity
+            style={styles.adminRow}
+            onPress={() => navigation.navigate('AdminLogin')}
+          >
+            <View style={styles.adminRowInfo}>
+              <Text style={styles.adminRowLabel}>Admin Panel</Text>
+              <Text style={styles.adminRowDesc}>
+                Sign in with your Supabase admin account to manage subscriptions.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+        </SettingsSection>
+
         <SettingsSection title="About" icon="information-circle-outline">
-          <TouchableOpacity style={styles.aboutRow} onPress={handleVersionTap} activeOpacity={1}>
+          <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>Version</Text>
             <Text style={styles.aboutValue}>1.0.0</Text>
-          </TouchableOpacity>
+          </View>
           <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>AI Models</Text>
             <Text style={styles.aboutValue}>Whisper + GPT-4</Text>
@@ -575,6 +575,28 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.borderLight,
+  },
+  adminRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+    padding: SPACING.md,
+  },
+  adminRowInfo: {
+    flex: 1,
+    paddingRight: SPACING.sm,
+  },
+  adminRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  adminRowDesc: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
   aboutLabel: {
     fontSize: 14,

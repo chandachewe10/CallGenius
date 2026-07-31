@@ -53,9 +53,22 @@ class AutoCallRecordingService {
       return;
     }
 
-    if (event.state === 'Disconnected') {
+    if (event.state === 'Incoming' && event.phoneNumber) {
+      // Keep caller ID until Android Offhook/Connected arrives.
+      return;
+    }
+
+    if (event.state === 'Disconnected' || event.state === 'Missed') {
       await this.stopCallRecording();
     }
+  }
+
+  getStatus(): { running: boolean; listening: boolean; error: string | null } {
+    return {
+      running: this.isEnabled,
+      listening: callDetectionService.isListening(),
+      error: callDetectionService.getLastError(),
+    };
   }
 
   private async startCallRecording(

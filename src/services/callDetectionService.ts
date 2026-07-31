@@ -1,4 +1,5 @@
-import { Platform, NativeModules, NativeEventEmitter, PermissionsAndroid } from 'react-native';
+import { Platform } from 'react-native';
+import CallDetectorManager from 'react-native-call-detection';
 import { CallDirection } from '../types';
 
 export type CallEvent = {
@@ -9,98 +10,109 @@ export type CallEvent = {
 type CallEventCallback = (event: CallEvent, direction: CallDirection) => void;
 
 class CallDetectionService {
-  private callDetection: any = null;
-  private eventEmitter: NativeEventEmitter | null = null;
-  private subscription: any = null;
+  private detector: CallDetectorManager | null = null;
   private onCallEvent: CallEventCallback | null = null;
-  private isActive: boolean = false;
+  private isActive = false;
+  private lastError: string | null = null;
+  private pendingPhoneNumber: string | undefined;
 
   setCallEventCallback(cb: CallEventCallback) {
     this.onCallEvent = cb;
-  }
-
-  private async requestAndroidPhonePermissions(): Promise<boolean> {
-    if (Platform.OS !== 'android') return true;
-
-    const permissions = [
-      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
-      PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
-    ];
-
-    const alreadyGranted = await PermissionsAndroid.check(
-      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
-    );
-    if (alreadyGranted) return true;
-
-    const results = await PermissionsAndroid.requestMultiple(permissions);
-    return (
-      results[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] ===
-      PermissionsAndroid.RESULTS.GRANTED
-    );
   }
 
   async start(): Promise<boolean> {
     if (this.isActive) return true;
 
     if (Platform.OS !== 'android' && Platform.OS !== 'ios') {
+      this.lastError = 'Call detection is only supported on Android and iOS.';
       return false;
     }
 
     try {
-      const hasPhonePermission = await this.requestAndroidPhonePermissions();
-      if (!hasPhonePermission) {
-        console.warn('Call detection unavailable: READ_PHONE_STATE permission denied');
-        return false;
-      }
-
-      // Dynamically import to handle environments where native module may not be linked
-      const CallDetection = NativeModules.RNCallDetection;
-      if (!CallDetection) {
-        console.warn('CallDetection native module not available');
-        return false;
-      }
-
-      this.callDetection = CallDetection;
-      this.eventEmitter = new NativeEventEmitter(CallDetection);
-
-      this.subscription = this.eventEmitter.addListener(
-        'CallDetected',
-        this.handleCallEvent.bind(this)
+      this.detector = new CallDetectorManager(
+        (event, phoneNumber) => {
+          this.handleNativeEvent(String(event), phoneNumber ?? undefined);
+        },
+        Platform.OS === 'android',
+        () => {
+          this.lastError = 'Phone permission denied';
+          console.warn('[CallDetection] READ_PHONE_STATE permission denied');
+        },
+        {
+          title: 'Phone Permission',
+          message:
+            'CallGenius needs phone access to detect calls and auto-record them.',
+        },
       );
 
-      await CallDetection.startListener();
       this.isActive = true;
+      this.lastError = null;
       return true;
     } catch (error) {
-      console.warn('Failed to start call detection:', error);
+      this.lastError =
+        error instanceof Error ? error.message : 'Failed to start call detection';
+      console.warn('[CallDetection] Failed to start:', this.lastError);
       return false;
     }
   }
 
   stop() {
     if (!this.isActive) return;
+
     try {
-      this.subscription?.remove();
-      this.callDetection?.stopListener?.();
-      this.subscription = null;
-      this.callDetection = null;
-      this.eventEmitter = null;
-      this.isActive = false;
+      this.detector?.dispose();
     } catch (error) {
-      console.warn('Failed to stop call detection:', error);
+      console.warn('[CallDetection] Failed to stop:', error);
+    } finally {
+      this.detector = null;
+      this.isActive = false;
+      this.pendingPhoneNumber = undefined;
     }
-  }
-
-  private handleCallEvent(data: { state: string; phoneNumber?: string }) {
-    const state = data.state as CallEvent['state'];
-    const direction: CallDirection =
-      state === 'Incoming' || state === 'Missed' ? 'incoming' : 'outgoing';
-
-    this.onCallEvent?.({ state, phoneNumber: data.phoneNumber }, direction);
   }
 
   isListening(): boolean {
     return this.isActive;
+  }
+
+  getLastError(): string | null {
+    return this.lastError;
+  }
+
+  private handleNativeEvent(rawState: string, phoneNumber?: string) {
+    if (rawState === 'Incoming' && phoneNumber) {
+      this.pendingPhoneNumber = phoneNumber;
+    }
+
+    const state = this.normalizeState(rawState);
+    if (!state) return;
+
+    const resolvedPhone = phoneNumber ?? this.pendingPhoneNumber;
+    const direction: CallDirection =
+      rawState === 'Incoming' || rawState === 'Missed' ? 'incoming' : 'outgoing';
+
+    this.onCallEvent?.({ state, phoneNumber: resolvedPhone }, direction);
+
+    if (state === 'Disconnected' || state === 'Missed') {
+      this.pendingPhoneNumber = undefined;
+    }
+  }
+
+  private normalizeState(rawState: string): CallEvent['state'] | null {
+    switch (rawState) {
+      case 'Connected':
+      case 'Offhook':
+        return 'Connected';
+      case 'Incoming':
+        return 'Incoming';
+      case 'Dialing':
+        return 'Dialing';
+      case 'Disconnected':
+        return 'Disconnected';
+      case 'Missed':
+        return 'Missed';
+      default:
+        return null;
+    }
   }
 }
 

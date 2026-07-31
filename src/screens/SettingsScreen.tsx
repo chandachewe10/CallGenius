@@ -26,10 +26,30 @@ export function SettingsScreen({ navigation }: Props) {
   const { settings, updateSettings, resetSettings } = useSettings();
   const { clearAll, calls } = useCallRecords();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
+  const [autoRecordStatus, setAutoRecordStatus] = useState(
+    autoCallRecordingService.getStatus(),
+  );
 
   useEffect(() => {
     subscriptionService.getSubscription().then(setSubscription);
   }, []);
+
+  useEffect(() => {
+    if (!settings.autoRecord) {
+      setAutoRecordStatus(autoCallRecordingService.getStatus());
+      return;
+    }
+
+    autoCallRecordingService.start().then(() => {
+      setAutoRecordStatus(autoCallRecordingService.getStatus());
+    });
+
+    const interval = setInterval(() => {
+      setAutoRecordStatus(autoCallRecordingService.getStatus());
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [settings.autoRecord]);
 
   const handleClearData = useCallback(() => {
     Alert.alert(
@@ -99,8 +119,25 @@ export function SettingsScreen({ navigation }: Props) {
               } else {
                 autoCallRecordingService.stop();
               }
+              setAutoRecordStatus(autoCallRecordingService.getStatus());
             }}
           />
+          {settings.autoRecord && (
+            <View style={styles.autoRecordStatusRow}>
+              <Ionicons
+                name={autoRecordStatus.listening ? 'checkmark-circle' : 'alert-circle-outline'}
+                size={16}
+                color={autoRecordStatus.listening ? COLORS.accent : COLORS.warning}
+              />
+              <Text style={styles.autoRecordStatusText}>
+                {autoRecordStatus.listening
+                  ? 'Call detection active — calls will auto-record when connected'
+                  : autoRecordStatus.error
+                    ? `Call detection unavailable: ${autoRecordStatus.error}`
+                    : 'Call detection not active — rebuild the app APK if using Expo Go'}
+              </Text>
+            </View>
+          )}
           <SettingsSwitchRow
             label="Auto Transcribe"
             desc="Automatically transcribe after recording stops"
@@ -460,6 +497,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  autoRecordStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
+  },
+  autoRecordStatusText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
   pickerSection: {
     borderBottomWidth: 1,

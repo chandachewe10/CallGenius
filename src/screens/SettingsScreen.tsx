@@ -11,12 +11,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, GptModel, UseCase, UserSubscription } from '../types';
+import { RootStackParamList, UseCase, UserSubscription } from '../types';
 import { COLORS, SPACING, BORDER_RADIUS, USE_CASE_CONFIG, SUBSCRIPTION_PLANS } from '../constants';
 import { useSettings } from '../hooks/useSettings';
 import { useCallRecords } from '../hooks/useCallRecords';
 import { subscriptionService } from '../services/subscriptionService';
-import { hasOpenAiApiKey } from '../config/env';
 import { autoCallRecordingService } from '../services/autoCallRecordingService';
 
 type Props = {
@@ -64,12 +63,6 @@ export function SettingsScreen({ navigation }: Props) {
     ]);
   }, [resetSettings]);
 
-  const GPT_MODELS: Array<{ value: GptModel; label: string; desc: string }> = [
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini', desc: 'Faster, cost-effective' },
-    { value: 'gpt-4o', label: 'GPT-4o', desc: 'Balanced quality & speed' },
-    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', desc: 'Highest quality analysis' },
-  ];
-
   const LANGUAGES = [
     { code: 'en', label: 'English' },
     { code: 'es', label: 'Spanish' },
@@ -94,40 +87,6 @@ export function SettingsScreen({ navigation }: Props) {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <SettingsSection title="AI Configuration" icon="sparkles-outline">
-          {/* <View style={styles.envStatusRow}>
-            <View style={styles.settingsRowInfo}>
-              <Text style={styles.settingsRowLabel}>OpenAI API Key</Text>
-              <Text style={styles.settingsRowDesc}>
-                Configured in .env as EXPO_PUBLIC_OPENAI_API_KEY for all users.
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.envStatusBadge,
-                hasOpenAiApiKey() ? styles.envStatusConfigured : styles.envStatusMissing,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.envStatusText,
-                  hasOpenAiApiKey() ? styles.envStatusTextConfigured : styles.envStatusTextMissing,
-                ]}
-              >
-                {hasOpenAiApiKey() ? 'Configured' : 'Missing'}
-              </Text>
-            </View>
-          </View> */}
-
-          <SettingsPickerRow
-            label="GPT Model"
-            desc="Used for call summarization"
-            value={settings.gptModel}
-            options={GPT_MODELS.map(m => ({ value: m.value, label: m.label }))}
-            onChange={v => updateSettings({ gptModel: v as GptModel })}
-          />
-        </SettingsSection>
-
         <SettingsSection title="Recording" icon="mic-outline">
           <SettingsSwitchRow
             label="Auto Record Phone Calls"
@@ -253,7 +212,7 @@ export function SettingsScreen({ navigation }: Props) {
             <View style={styles.adminRowInfo}>
               <Text style={styles.adminRowLabel}>Admin Panel</Text>
               <Text style={styles.adminRowDesc}>
-                Sign in with your Supabase admin account to manage subscriptions.
+                Sign in with your admin account to manage subscriptions.
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
@@ -265,14 +224,14 @@ export function SettingsScreen({ navigation }: Props) {
             <Text style={styles.aboutLabel}>Version</Text>
             <Text style={styles.aboutValue}>1.0.0</Text>
           </View>
-          <View style={styles.aboutRow}>
+          {/* <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>AI Models</Text>
             <Text style={styles.aboutValue}>Whisper + GPT-4</Text>
           </View>
           <View style={styles.aboutRow}>
             <Text style={styles.aboutLabel}>Platform</Text>
             <Text style={styles.aboutValue}>iOS & Android</Text>
-          </View>
+          </View> */}
         </SettingsSection>
 
         <TouchableOpacity style={styles.resetButton} onPress={handleResetSettings}>

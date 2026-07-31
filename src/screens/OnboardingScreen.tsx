@@ -81,7 +81,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
         </View>
         <View style={styles.aiPill}>
           <Ionicons name="sparkles" size={12} color={COLORS.secondary} />
-          <Text style={styles.aiPillText}>AI Powered</Text>
+
         </View>
       </View>
 
@@ -91,8 +91,8 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
       </View>
 
       <Text style={styles.welcomeDesc}>
-        Turn every phone call into structured insights using OpenAI Whisper transcription and
-        GPT-4 intelligent summaries — tailored to how you work.
+        Turn every phone call into structured insights using CallGenius transcription and
+        intelligent summaries tailored to how you work.
       </Text>
 
       <View style={styles.featureList}>
@@ -140,7 +140,7 @@ function UseCaseStep({
       <View style={styles.stepHeader}>
         <Text style={styles.stepTitle}>How will you use CallGenius?</Text>
         <Text style={styles.stepSubtitle}>
-          We'll tailor the AI prompts and analysis to match your specific needs.
+          We'll tailor CallGenius to your specific needs.
           You can change this anytime in Settings.
         </Text>
       </View>

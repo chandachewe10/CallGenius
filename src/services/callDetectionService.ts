@@ -1,4 +1,4 @@
-import { Platform, NativeModules, NativeEventEmitter } from 'react-native';
+import { Platform, NativeModules, NativeEventEmitter, PermissionsAndroid } from 'react-native';
 import { CallDirection } from '../types';
 
 export type CallEvent = {
@@ -19,6 +19,26 @@ class CallDetectionService {
     this.onCallEvent = cb;
   }
 
+  private async requestAndroidPhonePermissions(): Promise<boolean> {
+    if (Platform.OS !== 'android') return true;
+
+    const permissions = [
+      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+      PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+    ];
+
+    const alreadyGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+    );
+    if (alreadyGranted) return true;
+
+    const results = await PermissionsAndroid.requestMultiple(permissions);
+    return (
+      results[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] ===
+      PermissionsAndroid.RESULTS.GRANTED
+    );
+  }
+
   async start(): Promise<boolean> {
     if (this.isActive) return true;
 
@@ -27,6 +47,12 @@ class CallDetectionService {
     }
 
     try {
+      const hasPhonePermission = await this.requestAndroidPhonePermissions();
+      if (!hasPhonePermission) {
+        console.warn('Call detection unavailable: READ_PHONE_STATE permission denied');
+        return false;
+      }
+
       // Dynamically import to handle environments where native module may not be linked
       const CallDetection = NativeModules.RNCallDetection;
       if (!CallDetection) {
